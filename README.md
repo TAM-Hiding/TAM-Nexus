@@ -4,6 +4,8 @@ TAM Nexus is the proposed local-first coordination layer for TAM, a conversation
 
 NX-002 implements an offline coordination prototype using deterministic fixtures. See the [operator guide](docs/nx-002/README.md) and [verification record](docs/nx-002/verification.md).
 
+NX-003 adds an optional Linux subprocess runner for those fixtures. See the [Linux worker guide](docs/nx-003/README.md) for the sandbox profile and strict security test command.
+
 Run the offline suite with `python -m unittest discover -s tests -v` from the repository root. Linux and Python 3.11+ are required. All runtime modules use the Python standard library.
 
 | Document | Contents |

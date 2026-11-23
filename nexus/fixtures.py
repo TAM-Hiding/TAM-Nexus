@@ -3,6 +3,7 @@
 import json
 
 from .storage import digest, encode, open_database, transaction
+from .worker_fixture import solve
 
 RESOURCE = "fixture:hero-cad"
 BASE = digest({"hero-cad": "synthetic base v1"})
@@ -34,31 +35,8 @@ def archive_lookup(reference, revision, allowed):
 
 
 def run_fixture(phase, *, mode, candidate, iteration):
-    if phase == "investigate":
-        observations = [
-            {"classification": "observed", "sequence": ["X", "Y"],
-             "result": "fixture_failure"},
-        ]
-        if mode == "inconclusive":
-            observations.append({"classification": "inconclusive", "sequence": ["X", "Y", "Z"],
-                                 "result": "control_unavailable"})
-            return {"observations": observations, "reproduced": False,
-                    "limitation": "control result unavailable"}
-        observations.append({"classification": "observed", "sequence": ["X", "Y", "Z"],
-                             "result": "fixture_pass"})
-        return {"observations": observations, "reproduced": True,
-                "hypothesis": {"classification": "inferred", "claim": "fixture state is stale"},
-                "limitation": "synthetic observations only"}
-    if phase == "implement":
-        return {"path": SCOPE, "base": BASE, "iteration": iteration,
-                "change": "refresh simulated state after Y"}
-    if phase == "verify":
-        return {"candidate": candidate, "command": "fixture-check-X-Y-and-control",
-                "passed": 2, "failed": 0, "skipped": 0}
-    if phase == "review":
-        return {"candidate": candidate, "verdict": "passed",
-                "checks": ["fixture-scope", "verification-identity"]}
-    raise ValueError("unsupported fixture phase")
+    return solve({"phase": phase, "mode": mode, "candidate": candidate,
+                  "iteration": iteration, "base": BASE, "scope": SCOPE})
 
 
 class FixtureBroker:

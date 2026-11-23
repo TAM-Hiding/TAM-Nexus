@@ -1,5 +1,7 @@
 # NX-002 operator guide
 
+This guide describes the deterministic in-process fixture path. For the Linux subprocess profile and security tests, see the [NX-003 worker guide](../nx-003/README.md).
+
 NX-002 runs one synthetic HERO-CAD workflow on Linux using Python 3.11+ and SQLite. All workers, source revisions, Archive references and provider operations are fixtures. The runtime uses the Python standard library and opens no network connections.
 
 ## Run and inspect
