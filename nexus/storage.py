@@ -37,7 +37,7 @@ def private_directory(path):
     return path
 
 
-def open_database(path, schema):
+def open_database(path, schema, migrations=()):
     # The enclosing directory is private. Restrict the database itself as well.
     fd = os.open(path, os.O_CREAT | os.O_NOFOLLOW | os.O_RDONLY, 0o600)
     os.close(fd)
@@ -54,9 +54,14 @@ def open_database(path, schema):
             if version == 0:
                 for statement in schema:
                     db.execute(statement)
+                version = 1
                 db.execute("PRAGMA user_version = 1")
-            elif version != 1:
+            if not 1 <= version <= len(migrations) + 1:
                 raise ValueError(f"unsupported database schema {version}")
+            for index in range(version - 1, len(migrations)):
+                for statement in migrations[index]:
+                    db.execute(statement)
+                db.execute(f"PRAGMA user_version = {index + 2}")
     except BaseException:
         db.close()
         raise
@@ -129,6 +134,13 @@ SCHEMA = (
         allowed INTEGER NOT NULL, version INTEGER NOT NULL
     )""",
 )
+
+COORDINATOR_MIGRATIONS = ((
+    """CREATE TABLE linux_runs (
+        attempt INTEGER PRIMARY KEY REFERENCES attempts(id),
+        command TEXT NOT NULL UNIQUE, fingerprint TEXT NOT NULL, status TEXT NOT NULL
+    )""",
+),)
 
 
 class Artifacts:

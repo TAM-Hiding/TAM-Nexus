@@ -1,6 +1,7 @@
 """Single-writer state machine for the NX-002 fixture workflow."""
 
 from dataclasses import dataclass
+from contextlib import ExitStack
 import inspect
 import json
 import re
@@ -9,8 +10,9 @@ from .fixtures import (
     BASE, DEFAULT_WORKERS, PHASES, RESOURCE, SCOPE, FixtureBroker, archive_lookup,
     run_fixture,
 )
+from .linux_worker import RunnerBusy, dispatch_lock
 from .storage import (
-    SCHEMA, Artifacts, EvidenceError, InjectedCrash, digest, encode, open_database,
+    COORDINATOR_MIGRATIONS, SCHEMA, Artifacts, EvidenceError, InjectedCrash, digest, encode, open_database,
     private_directory, transaction,
 )
 
@@ -48,10 +50,12 @@ class Job:
 
 
 class Coordinator:
-    def __init__(self, root):
+    def __init__(self, root, *, runner=None):
         root = private_directory(root)
+        self.root = root.resolve()
+        self.runner = runner
         self.artifacts = Artifacts(root / "artifacts")
-        self.db = open_database(root / "nexus.sqlite3", SCHEMA)
+        self.db = open_database(root / "nexus.sqlite3", SCHEMA, COORDINATOR_MIGRATIONS)
         try:
             self.broker = FixtureBroker(root)
             with transaction(self.db):
@@ -106,13 +110,15 @@ class Coordinator:
                     phase=work["phase"], revision=work["revision"],
                     version=work["version"], reason=reason)
 
-    def _new(self, phase, binding, state, *, budget, ttl):
+    def _new(self, phase, binding, state, *, budget, ttl, profile=None):
         cursor = self.db.execute("INSERT INTO work(version,state,phase,revision,data)"
                                  " VALUES (1,?,?,?,?)", (state, phase, "", "{}"))
         work = cursor.lastrowid
         revision = self._write_revision(work, binding)
         data = {"budget": budget, "used": 0, "deadline": self._settings()["tick"] + ttl,
                 "generation": 0, "iteration": 1, "reason": "created"}
+        if profile:
+            data["worker_profile"] = profile
         self.db.execute("UPDATE work SET revision=?,data=? WHERE id=?",
                         (revision, encode(data), work))
         self._event("work_created", work, revision=revision, state=state, phase=phase)
@@ -131,13 +137,20 @@ class Coordinator:
                 or (work is not None and not _valid_id(work))):
             return {"ok": False, "reason": "invalid_command"}
         actor = "operator" if principal is OPERATOR else "untrusted"
+        linux_dispatch = action == "run" and actor == "operator" and self.runner is not None
         try:
-            serialized = encode([actor, action, work, version, args])
+            request = [actor, action, work, version, args]
+            if linux_dispatch:
+                request.append("linux")
+            serialized = encode(request)
             if len(serialized) > 16384:
                 raise ValueError
             fingerprint = digest(serialized)
         except (TypeError, ValueError, RecursionError):
             return {"ok": False, "reason": "invalid_command"}
+
+        if linux_dispatch:
+            return self._run_linux(command, work, version, args, fingerprint)
 
         armed = None
         if action == "publish" and actor == "operator":
@@ -162,6 +175,9 @@ class Coordinator:
                     return {"ok": False, "reason": "command_conflict"}
                 reason = "operation_in_progress" if reservation["status"] == "armed" else "reconcile_report"
                 return {"ok": False, "reason": reason, "effect_status": reservation["status"]}
+            reserved = self._linux_replay(command, fingerprint, actor)
+            if reserved is not None:
+                return reserved
             self.db.execute("SAVEPOINT command_body")
             try:
                 if principal is not OPERATOR:
@@ -265,7 +281,7 @@ class Coordinator:
             "target": f"{RESOURCE}/{topic}", "mode": source["mode"],
             "expected": "X/Y matches control after refresh", "risk": "synthetic fixture only",
             "plan": ["verify", "review"],
-        }, "awaiting_approval", budget=budget, ttl=ttl)
+        }, "awaiting_approval", budget=budget, ttl=ttl, profile=work["data"].get("worker_profile"))
         return self._ok(child, binding=self._binding(child, "implement"))
 
     def _binding(self, work, action):
@@ -379,7 +395,16 @@ class Coordinator:
                     return None
         return values
 
-    def _claim(self, work):
+    def _check_dispatch_lock(self):
+        try:
+            with dispatch_lock(self.root):
+                return
+        except RunnerBusy as exc:
+            raise Rejected("runner_busy") from exc
+        except OSError as exc:
+            raise Rejected("worker_lock_unavailable") from exc
+
+    def _claim(self, work, *, linux=False):
         self._require(work["state"] == "queued" and work["phase"] in PHASES, "not_runnable")
         if not self._permitted(work):
             return self._blocked(work, "authorization_inactive")
@@ -389,6 +414,8 @@ class Coordinator:
             return self._budget_failed(work)
         self._require(self._row("SELECT 1 FROM attempts WHERE status='active'") is None
                       and not self._armed(), "runner_busy")
+        if not linux:
+            self._check_dispatch_lock()
         worker = self._available_worker(work)
         if worker is None:
             return self._blocked(work, "no_eligible_worker")
@@ -421,7 +448,146 @@ class Coordinator:
     def _fixture(self, job):
         return run_fixture(job.phase, mode=job.mode, candidate=job.candidate, iteration=job.iteration)
 
+    def _linux_replay(self, command, fingerprint, actor):
+        reservation = self._row(
+            "SELECT l.*,a.work FROM linux_runs l JOIN attempts a ON a.id=l.attempt WHERE l.command=?",
+            (command,))
+        if reservation is None:
+            return None
+        if reservation["fingerprint"] != fingerprint:
+            self._event("command_conflict", reservation["work"], actor=actor, command=command)
+            return {"ok": False, "reason": "command_conflict"}
+        active = reservation["status"] in ("armed", "launched", "observed")
+        return {"ok": False, "reason": "operation_in_progress" if active else "reconcile_report",
+                "runner_status": reservation["status"]}
+
+    def _linux_previous(self, command, fingerprint, work):
+        previous = self._row("SELECT * FROM commands WHERE id=?", (command,))
+        effect = self._row("SELECT * FROM effects WHERE command=?", (command,))
+        if previous and previous["fingerprint"] == fingerprint:
+            return json.loads(previous["response"])
+        if previous or effect:
+            self._event("command_conflict", self._existing_work(work), actor="operator",
+                        command=command)
+            return {"ok": False, "reason": "command_conflict"}
+        return self._linux_replay(command, fingerprint, "operator")
+
+    def _linux_response(self, command, fingerprint, work, result):
+        self._event("command", self._existing_work(work), actor="operator", command=command,
+                    action="run", ok=result["ok"], reason=result.get("reason"))
+        self.db.execute("INSERT INTO commands VALUES (?,?,?)", (command, fingerprint, encode(result)))
+        return result
+
+    def _prepare_linux(self, command, fingerprint, work_id, version, args):
+        try:
+            work = self._checked_work(work_id, version)
+            self._require(not args, "invalid_arguments")
+            if work["state"] == "queued":
+                claim = self._claim(work, linux=True)
+                if not claim["ok"]:
+                    return claim
+                attempt = claim["attempt"]
+            else:
+                active = self._row("SELECT id FROM attempts WHERE work=? AND status='active'",
+                                   (work_id,))
+                self._require(active is not None, "no_active_attempt")
+                attempt = active["id"]
+            self._require(not self._row("SELECT 1 FROM linux_runs WHERE attempt=?", (attempt,)),
+                          "linux_attempt_reserved")
+            job = self._job(attempt)
+        except Rejected as exc:
+            return {"ok": False, "reason": str(exc)}
+        self.db.execute("INSERT INTO linux_runs VALUES (?,?,?,'armed')", (attempt, command, fingerprint))
+        if work["data"].get("worker_profile") != "linux":
+            self._save(work, "running", reason="linux_profile_selected", worker_profile="linux")
+        self._event("linux_armed", work_id, actor="runner", command=command, attempt=attempt,
+                    generation=job.generation, revision=job.revision)
+        return job
+
+    def _run_linux(self, command, work_id, version, args, fingerprint):
+        with ExitStack() as stack:
+            with transaction(self.db):
+                previous = self._linux_previous(command, fingerprint, work_id)
+                if previous is not None:
+                    return previous
+                try:
+                    lock = stack.enter_context(dispatch_lock(self.root))
+                except RunnerBusy:
+                    return {"ok": False, "reason": "runner_busy"}
+                except OSError:
+                    return {"ok": False, "reason": "worker_lock_unavailable"}
+                job = self._prepare_linux(command, fingerprint, work_id, version, args)
+                if isinstance(job, dict):
+                    return self._linux_response(command, fingerprint, work_id, job)
+
+            fault = self.runner.checkpoint_fault
+            if fault == "before_launch":
+                raise InjectedCrash("after durable claim, before launch")
+            observed = self._execute_linux(stack, lock, job, command)
+            if fault == "after_worker":
+                raise InjectedCrash("after worker output, before durable acknowledgement")
+
+            with transaction(self.db):
+                if not self._linux_current(job):
+                    return self._linux_stale(job, command, fingerprint, observed["status"])
+                self.db.execute("UPDATE linux_runs SET status='observed' WHERE attempt=?", (job.id,))
+                self._event("linux_observed", work_id, actor="runner", command=command, attempt=job.id,
+                            outcome=observed["status"], exit_code=observed.get("exit"),
+                            detail=observed.get("detail"))
+            if fault == "after_ack":
+                raise InjectedCrash("after acknowledgement, before checkpoint")
+
+            with transaction(self.db):
+                if not self._linux_current(job):
+                    return self._linux_stale(job, command, fingerprint, observed["status"])
+                if observed["status"] == "observed":
+                    result = self._finish(job.worker, job, observed["output"], fault=fault, linux=True)
+                else:
+                    result = self._interrupt(self._work(work_id), observed["status"])
+                self.db.execute("UPDATE linux_runs SET status=? WHERE attempt=?",
+                                ("accepted" if result["ok"] else "failed", job.id))
+                return self._linux_response(command, fingerprint, work_id, result)
+
+    def _execute_linux(self, stack, lock, job, command):
+        with transaction(self.db):
+            if not self._linux_current(job):
+                return {"status": "worker_cancelled"}
+            if self._evidence(self._work(job.work)) is None:
+                return {"status": "evidence_unavailable"}
+            try:
+                process = stack.enter_context(self.runner.launch(lock, job))
+            except OSError:
+                return {"status": "supervisor_launch_failed"}
+            self.db.execute("UPDATE linux_runs SET status='launched' WHERE attempt=?", (job.id,))
+            self._event("linux_launched", job.work, actor="runner", command=command, attempt=job.id)
+        return self.runner.wait(process, lambda: self._linux_current(job))
+
+    def _linux_current(self, job):
+        try:
+            return self._active_job(job.worker, job)[1]
+        except Rejected:
+            return False
+
+    def _linux_stale(self, job, command, fingerprint, runner_outcome):
+        work = self._work(job.work)
+        active = self._row("SELECT 1 FROM attempts WHERE id=? AND status='active'", (job.id,))
+        if active:
+            self._interrupt(work, "lease_or_authorization_inactive")
+        self._event("result_refused", job.work, actor="runner", attempt=job.id,
+                    reason="stale_or_wrong_attempt", runner_outcome=runner_outcome)
+        return self._linux_response(command, fingerprint, job.work,
+                                    {"ok": False, "reason": "stale_or_wrong_attempt"})
+
+    def _fence_linux(self, work):
+        fenced = self.db.execute(
+            "UPDATE linux_runs SET status='interrupted' WHERE attempt IN "
+            "(SELECT id FROM attempts WHERE work=? AND status='active') "
+            "AND status IN ('armed','launched','observed')", (work["id"],))
+        if fenced.rowcount:
+            self._event("linux_fenced", work["id"], cleanup="dispatch_lock_required")
+
     def _cmd_run(self, work):
+        self._require(work["data"].get("worker_profile") != "linux", "linux_profile_required")
         if work["state"] == "queued":
             claim = self._claim(work)
             if not claim["ok"]:
@@ -444,7 +610,7 @@ class Coordinator:
                             reason=str(exc))
                 return {"ok": False, "reason": str(exc)}
 
-    def _finish(self, worker, job, output, *, run=False, fault=None):
+    def _active_job(self, worker, job):
         attempt = self._row("SELECT * FROM attempts WHERE id=?", (job.id,))
         work = self._work(job.work)
         self._require(attempt is not None and attempt["status"] == "active"
@@ -453,13 +619,20 @@ class Coordinator:
                       and job.generation == work["data"]["generation"]
                       and job.candidate == work["data"].get("candidate"), "stale_or_wrong_attempt")
         control = self._row("SELECT * FROM workers WHERE id = ?", (job.worker,))
-        if (job.expires <= self._settings()["tick"] or not self._permitted(work)
-                or control is None or not self._eligible(work, control)):
+        return work, (job.expires > self._settings()["tick"] and self._permitted(work)
+                      and control is not None and self._eligible(work, control))
+
+    def _finish(self, worker, job, output, *, run=False, fault=None, linux=False):
+        work, permitted = self._active_job(worker, job)
+        self._require(linux or work["data"].get("worker_profile") != "linux",
+                      "linux_attempt_reserved")
+        if not permitted:
             return self._interrupt(work, "lease_or_authorization_inactive")
         if self._evidence(work) is None:
             return self._interrupt(work, "evidence_unavailable")
-        self._event("tool_start", job.work, actor="runner", attempt=job.id,
-                    tool=f"fixture-{job.phase}", revision=job.revision, candidate=job.candidate)
+        if not linux:
+            self._event("tool_start", job.work, actor="runner", attempt=job.id,
+                        tool=f"fixture-{job.phase}", revision=job.revision, candidate=job.candidate)
         expected = self._fixture(job)
         if run:
             output = expected
@@ -505,6 +678,7 @@ class Coordinator:
         return self._ok(work, artifact=artifact)
 
     def _interrupt(self, work, reason):
+        self._fence_linux(work)
         self.db.execute("UPDATE attempts SET status='interrupted' WHERE work=? AND status='active'",
                         (work["id"],))
         self._event("interrupted", work["id"], reason=reason)
@@ -568,6 +742,7 @@ class Coordinator:
     def _cmd_cancel(self, work, acknowledge_unknown=False):
         self._require(type(acknowledge_unknown) is bool, "invalid_disposition")
         self._require(work["state"] not in TERMINAL, "terminal_work")
+        self._fence_linux(work)
         self.db.execute("UPDATE attempts SET status='interrupted' WHERE work=? AND status='active'",
                         (work["id"],))
         effect = self._unresolved(work)
@@ -600,6 +775,7 @@ class Coordinator:
     def _arm_for_command(self, command, fingerprint, work_id, version, args):
         if (set(args) - {"fault"} or args.get("fault", "none") not in FixtureBroker.FAULTS
                 or self._row("SELECT id FROM commands WHERE id=?", (command,))
+                or self._row("SELECT 1 FROM linux_runs WHERE command=?", (command,))
                 or self._row("SELECT id FROM effects WHERE command=?", (command,))):
             return None
         try:
@@ -630,6 +806,7 @@ class Coordinator:
             (binding["target"],)) is None, "target_quarantined")
         self._require(not self._armed() and self._row(
             "SELECT id FROM attempts WHERE status='active'") is None, "runner_busy")
+        self._check_dispatch_lock()
         pushed = self._row("SELECT * FROM effects WHERE work=? AND operation='push'"
                            " AND status != 'not_dispatched' ORDER BY id DESC LIMIT 1", (work["id"],))
         self._require(pushed is None or pushed["status"] == "confirmed", "push_not_confirmed")

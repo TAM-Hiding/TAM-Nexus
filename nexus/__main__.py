@@ -6,6 +6,7 @@ import sqlite3
 import sys
 
 from .coordinator import OPERATOR, Coordinator, Rejected, render_report
+from .linux_worker import LinuxRunner
 from .storage import EvidenceError, InjectedCrash
 
 
@@ -29,6 +30,8 @@ def _read_arguments(value):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--state", default=".nexus", help="owner-only state directory")
+    parser.add_argument("--runner", choices=("fake", "linux"), default="fake",
+                        help="fixture execution profile for run")
     sub = parser.add_subparsers(dest="verb", required=True)
     command = sub.add_parser("command", help="submit an operator command")
     command.add_argument("action")
@@ -44,7 +47,8 @@ def main(argv=None):
     options = parser.parse_args(argv)
 
     try:
-        with Coordinator(options.state) as coordinator:
+        runner = LinuxRunner() if options.runner == "linux" else None
+        with Coordinator(options.state, runner=runner) as coordinator:
             if options.verb == "command":
                 raw = sys.stdin.read(16385) if options.args == "-" else options.args
                 result = coordinator.execute(OPERATOR, options.id, options.action, work=options.work,
