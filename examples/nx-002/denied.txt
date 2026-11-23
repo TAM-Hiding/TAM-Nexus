@@ -1,0 +1,15 @@
+Work 2 · declined / implement
+Reason · implementation_declined
+Original message · 1 (text redacted)
+Resource and base · fixture:hero-cad @ 2d623a64c3644733de49b75851a7f0d8d5474a7887be63f4d7ba916040bdec21
+Scope · "fixture/model-steps.json"
+Revision · b0bafa20837dade417380b9fd4cfda227a89ebd006740fad740d10b0752f8186
+Budget · 0/10 dispatches reserved
+Candidate · none
+Handoff · none
+Attempt · {"candidate":null,"expires":3,"generation":1,"id":1,"phase":"investigate","revision":"ed032cb7fe565c36a64f9b73f53224128431d6149a55eb3f94a1aea7b3ff35d7","status":"accepted","work":1,"worker":"investigator"}
+Evidence · {"attempt":1,"available":true,"digest":"6303cbb3757d33f0a5523ef95ee314dddc95b9e52004b6de0aee97b264d5f9f1","phase":"investigate","result":{"hypothesis":{"claim":"fixture state is stale","classification":"inferred"},"limitation":"synthetic observations only","observations":[{"classification":"observed","result":"fixture_failure","sequence":["X","Y"]},{"classification":"observed","result":"fixture_pass","sequence":["X","Y","Z"]}],"reproduced":true}}
+Audit · approval_decision · {"allowed":false,"binding":{"action":"implement","base":"2d623a64c3644733de49b75851a7f0d8d5474a7887be63f4d7ba916040bdec21","operations":["implement","verify","review"],"resource":"fixture:hero-cad","revision":"b0bafa20837dade417380b9fd4cfda227a89ebd006740fad740d10b0752f8186","scope":"fixture/model-steps.json"}}
+Audit events · 14
+Limit · fixture-only execution and provider
+Limit · no live security validation
