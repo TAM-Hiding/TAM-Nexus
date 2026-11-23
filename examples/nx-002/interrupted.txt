@@ -1,0 +1,20 @@
+Work 2 · blocked / verify
+Reason · restart_fenced
+Original message · 1 (text redacted)
+Resource and base · fixture:hero-cad @ 2d623a64c3644733de49b75851a7f0d8d5474a7887be63f4d7ba916040bdec21
+Scope · "fixture/model-steps.json"
+Revision · b0bafa20837dade417380b9fd4cfda227a89ebd006740fad740d10b0752f8186
+Budget · 2/10 dispatches reserved
+Candidate · c460eb04a04c2fab8864157be17faedebd495b27e79ccb16400d3f7e4be7f927
+Handoff · none
+Grant · {"action":"implement","binding":{"action":"implement","base":"2d623a64c3644733de49b75851a7f0d8d5474a7887be63f4d7ba916040bdec21","operations":["implement","verify","review"],"resource":"fixture:hero-cad","revision":"b0bafa20837dade417380b9fd4cfda227a89ebd006740fad740d10b0752f8186","scope":"fixture/model-steps.json"},"expiry":10,"id":1,"policy":1,"principal":"operator","revoked":0,"work":2}
+Attempt · {"candidate":null,"expires":3,"generation":1,"id":1,"phase":"investigate","revision":"ed032cb7fe565c36a64f9b73f53224128431d6149a55eb3f94a1aea7b3ff35d7","status":"accepted","work":1,"worker":"investigator"}
+Attempt · {"candidate":null,"expires":3,"generation":1,"id":2,"phase":"implement","revision":"b0bafa20837dade417380b9fd4cfda227a89ebd006740fad740d10b0752f8186","status":"accepted","work":2,"worker":"implementer"}
+Attempt · {"candidate":"c460eb04a04c2fab8864157be17faedebd495b27e79ccb16400d3f7e4be7f927","expires":3,"generation":2,"id":3,"phase":"verify","revision":"b0bafa20837dade417380b9fd4cfda227a89ebd006740fad740d10b0752f8186","status":"interrupted","work":2,"worker":"verifier"}
+Evidence · {"attempt":1,"available":true,"digest":"6303cbb3757d33f0a5523ef95ee314dddc95b9e52004b6de0aee97b264d5f9f1","phase":"investigate","result":{"hypothesis":{"claim":"fixture state is stale","classification":"inferred"},"limitation":"synthetic observations only","observations":[{"classification":"observed","result":"fixture_failure","sequence":["X","Y"]},{"classification":"observed","result":"fixture_pass","sequence":["X","Y","Z"]}],"reproduced":true}}
+Evidence · {"attempt":2,"available":true,"digest":"c460eb04a04c2fab8864157be17faedebd495b27e79ccb16400d3f7e4be7f927","phase":"implement","result":{"base":"2d623a64c3644733de49b75851a7f0d8d5474a7887be63f4d7ba916040bdec21","change":"refresh simulated state after Y","iteration":1,"path":"fixture/model-steps.json"}}
+Audit · approval_decision · {"allowed":true,"binding":{"action":"implement","base":"2d623a64c3644733de49b75851a7f0d8d5474a7887be63f4d7ba916040bdec21","operations":["implement","verify","review"],"resource":"fixture:hero-cad","revision":"b0bafa20837dade417380b9fd4cfda227a89ebd006740fad740d10b0752f8186","scope":"fixture/model-steps.json"}}
+Audit · interrupted · {"reason":"restart_fenced"}
+Audit events · 26
+Limit · fixture-only execution and provider
+Limit · no live security validation

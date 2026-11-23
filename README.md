@@ -2,7 +2,9 @@
 
 TAM Nexus is the proposed local-first coordination layer for TAM, a conversational engineering and research assistant. It coordinates scoped work, approvals, workers, and evidence on Linux. Archive owns knowledge records. GitHub owns repository history and pull requests.
 
-NX-001 proposes an architecture for review. The repository currently contains its specifications.
+NX-002 implements an offline coordination prototype using deterministic fixtures. See the [operator guide](docs/nx-002/README.md) and [verification record](docs/nx-002/verification.md).
+
+Run the offline suite with `python -m unittest discover -s tests -v` from the repository root. Linux and Python 3.11+ are required. All runtime modules use the Python standard library.
 
 | Document | Contents |
 | --- | --- |
