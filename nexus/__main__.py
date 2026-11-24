@@ -42,6 +42,9 @@ def main(argv=None):
     report = sub.add_parser("report", help="read a redacted report")
     report.add_argument("work", type=int)
     report.add_argument("--json", action="store_true")
+    capture = sub.add_parser("source-evidence", help="read a private investigation capture")
+    capture.add_argument("work", type=int)
+    capture.add_argument("digest")
     message = sub.add_parser("message", help="display an original private message")
     message.add_argument("message", type=int)
     options = parser.parse_args(argv)
@@ -58,6 +61,9 @@ def main(argv=None):
             if options.verb == "report":
                 result = coordinator.report(OPERATOR, options.work)
                 print(json.dumps(result, indent=2, sort_keys=True) if options.json else render_report(result))
+            elif options.verb == "source-evidence":
+                print(json.dumps(coordinator.source_evidence(OPERATOR, options.work, options.digest),
+                                 sort_keys=True))
             else:
                 print(json.dumps(coordinator.message(OPERATOR, options.message), sort_keys=True))
     except (Rejected, ValueError, RecursionError, OSError, sqlite3.Error,

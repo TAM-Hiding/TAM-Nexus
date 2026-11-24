@@ -1,5 +1,6 @@
 """Trusted Linux supervisor. The worker receives only the fixture and its script."""
 
+import base64
 import ctypes
 import errno
 import json
@@ -94,7 +95,7 @@ def _filter(fd):
         lib.seccomp_release(ctx)
 
 
-def _command(python, stdlib, script, fixture, filter_fd, status_fd):
+def _command(python, stdlib, mounts, filter_fd, status_fd, source):
     args = [
         PRLIMIT, "--as=268435456:268435456", "--cpu=3:3", "--nproc=64:64",
         "--nofile=64:64", "--core=0:0", "--fsize=4194304:4194304", "--",
@@ -109,14 +110,16 @@ def _command(python, stdlib, script, fixture, filter_fd, status_fd):
     for name in (*LIBRARIES, LOADER):
         path = f"/usr/lib/{TRIPLET}/{name}"
         args.extend(("--ro-bind", path, path))
+    for path, fd in mounts:
+        args.extend(("--ro-bind-data", str(fd), path))
     args.extend((
-        "--ro-bind-data", str(script), "/input/worker.py",
-        "--ro-bind-data", str(fixture), "/input/job.json",
         "--perms", "0700", "--size", "4194304", "--tmpfs", "/scratch",
         "--remount-ro", "/", "--clearenv", "--setenv", "HOME", "/nonexistent",
         "--setenv", "LANG", "C", "--setenv", "LC_ALL", "C", "--chdir", "/scratch",
-        "--", "/usr/bin/python3", "-I", "-S", "-B", "/input/worker.py",
+        "--", "/usr/bin/python3", "-I", "-S", "-B",
     ))
+    args.extend(("-m", "unittest", "discover", "-s", "/source", "-p", "test_model.py", "-v")
+                if source else ("/input/worker.py",))
     return args
 
 
@@ -156,8 +159,19 @@ def _kill_tree(process, child_fd):
     process.wait()
 
 
-def _collect(process, status_fd, control, deadline):
-    output = bytearray()
+def _collect(process, status_fd, control, timeout, source):
+    start = time.monotonic()
+    deadline = start + timeout
+    streams = {"stdout": bytearray(), "stderr": bytearray()}
+    output = streams["stdout"]
+
+    def captured(status, exit_code=None):
+        result = {"status": status}
+        if source:
+            result.update(exit=exit_code, elapsed_ms=int((time.monotonic() - start) * 1000),
+                          streams={key: base64.b64encode(data).decode("ascii")
+                                   for key, data in streams.items()})
+        return result
     metadata = bytearray()
     child_fd = None
     child = None
@@ -165,7 +179,9 @@ def _collect(process, status_fd, control, deadline):
     failure = None
     try:
         with selectors.DefaultSelector() as select:
-            select.register(process.stdout, selectors.EVENT_READ, "output")
+            select.register(process.stdout, selectors.EVENT_READ, "stdout")
+            if source:
+                select.register(process.stderr, selectors.EVENT_READ, "stderr")
             select.register(status_fd, selectors.EVENT_READ, "status")
             select.register(control, selectors.EVENT_READ, "cancel")
             while len(select.get_map()) > 1 or process.poll() is None:
@@ -181,9 +197,10 @@ def _collect(process, status_fd, control, deadline):
                     if not block:
                         select.unregister(key.fileobj)
                         continue
-                    if key.data == "output":
-                        output.extend(block)
-                        if len(output) > MAX_OUTPUT:
+                    if key.data in streams:
+                        available = MAX_OUTPUT - sum(map(len, streams.values()))
+                        streams[key.data].extend(block[:available])
+                        if len(block) > available:
                             failure = "worker_output_oversized"
                             break
                         continue
@@ -209,10 +226,12 @@ def _collect(process, status_fd, control, deadline):
                     break
         if failure:
             _kill_tree(process, child_fd)
-            return {"status": failure}
+            return captured(failure)
         exit_code = process.wait()
         if child is None or code is None or code != exit_code:
             return {"status": "sandbox_setup_failed"}
+        if source:
+            return captured("test_exited", code)
         if code:
             return {"status": "worker_failed", "exit": code}
         try:
@@ -246,40 +265,55 @@ def _parse_output(output):
     return value
 
 
-def supervise(script, fixture, timeout, control):
+def supervise(script, fixture, timeout, control, *, files=None):
     with ExitStack() as stack:
         try:
             python, stdlib = require_host()
-            script_fd = _open_memfd(stack, "worker", script)
-            fixture_fd = _open_memfd(stack, "fixture", fixture)
+            if files is None:
+                inputs = {"/input/worker.py": script, "/input/job.json": fixture}
+            else:
+                names = {"NEXUS_FIXTURE.json", "model.py", "test_model.py"}
+                if files.keys() != names or any(len(data) > 12000 for data in files.values()):
+                    raise SandboxUnavailable("source_manifest_mismatch")
+                inputs = {"/source/" + name: data for name, data in files.items()}
+            mounts = [(path, _open_memfd(stack, "input", data)) for path, data in inputs.items()]
             filter_fd = _open_memfd(stack, "filter")
             _filter(filter_fd)
             status_read, status_write = os.pipe()
             stack.callback(os.close, status_read)
             try:
                 process = subprocess.Popen(
-                    _command(python, stdlib, script_fd, fixture_fd, filter_fd, status_write),
-                    stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                    close_fds=True, pass_fds=(script_fd, fixture_fd, filter_fd, status_write),
+                    _command(python, stdlib, mounts, filter_fd, status_write, files is not None),
+                    stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE if files is not None else subprocess.DEVNULL,
+                    close_fds=True, pass_fds=(*[fd for _, fd in mounts], filter_fd, status_write),
                     cwd="/", env=ENV,
                 )
             finally:
                 os.close(status_write)
             stack.callback(process.stdout.close)
+            if process.stderr:
+                stack.callback(process.stderr.close)
         except SandboxUnavailable as exc:
             return {"status": "sandbox_unavailable", "detail": str(exc)}
         except OSError:
             return {"status": "sandbox_setup_failed"}
-        return _collect(process, status_read, control, time.monotonic() + timeout)
+        return _collect(process, status_read, control, timeout, files is not None)
 
 
 if __name__ == "__main__":
     # The launcher passes a private liveness pipe on stdin and a dispatch lock
     # descriptor. Hold the lock until the sandbox has been reaped, even on EOF.
-    lock_fd, timeout, script, fixture = sys.argv[1:]
+    lock_fd, timeout, script, fixture, *source = sys.argv[1:]
     try:
         os.fstat(int(lock_fd))
-        result = supervise(bytes.fromhex(script), bytes.fromhex(fixture), float(timeout), 0)
+        files = None
+        if source:
+            with os.fdopen(int(source[0]), "rb") as stream:
+                serialized = stream.read(74001)
+            if len(serialized) > 74000:
+                raise SandboxUnavailable("source_manifest_mismatch")
+            files = {key: bytes.fromhex(value) for key, value in json.loads(serialized).items()}
+        result = supervise(bytes.fromhex(script), bytes.fromhex(fixture), float(timeout), 0, files=files)
         print(json.dumps(result, ensure_ascii=True, allow_nan=False))
     finally:
         os.close(int(lock_fd))
