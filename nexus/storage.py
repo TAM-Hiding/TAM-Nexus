@@ -140,7 +140,13 @@ COORDINATOR_MIGRATIONS = ((
         attempt INTEGER PRIMARY KEY REFERENCES attempts(id),
         command TEXT NOT NULL UNIQUE, fingerprint TEXT NOT NULL, status TEXT NOT NULL
     )""",
-),)
+), (
+    """CREATE TABLE source_authorizations (
+        id INTEGER PRIMARY KEY, path TEXT NOT NULL, resource TEXT NOT NULL,
+        revision TEXT NOT NULL, snapshot TEXT NOT NULL, policy INTEGER NOT NULL,
+        UNIQUE(path,resource,revision,snapshot,policy)
+    )""",
+))
 
 
 class Artifacts:

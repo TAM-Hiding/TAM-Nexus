@@ -10,6 +10,7 @@ from .fixtures import (
     BASE, DEFAULT_WORKERS, PHASES, RESOURCE, SCOPE, FixtureBroker, archive_lookup,
     run_fixture,
 )
+from . import source
 from .linux_worker import RunnerBusy, dispatch_lock
 from .storage import (
     COORDINATOR_MIGRATIONS, SCHEMA, Artifacts, EvidenceError, InjectedCrash, digest, encode, open_database,
@@ -21,9 +22,10 @@ TERMINAL = frozenset(("completed", "rejected", "declined", "failed", "cancelled"
 COMMANDS = frozenset((
     "message", "submit", "propose", "decide", "revoke", "claim", "run", "resume",
     "recover", "cancel", "accept", "rework", "publish", "reconcile", "advance",
-    "policy", "register", "archive",
+    "policy", "register", "archive", "authorize-source", "submit-source",
 ))
-GLOBAL = frozenset(("message", "submit", "recover", "advance", "policy", "register"))
+GLOBAL = frozenset(("message", "submit", "recover", "advance", "policy", "register",
+                    "authorize-source", "submit-source"))
 LEASE_TICKS = 3
 
 
@@ -184,7 +186,7 @@ class Coordinator:
                     raise Rejected("operator_required")
                 if action not in COMMANDS:
                     raise Rejected("unsupported_action")
-                handler = getattr(self, f"_cmd_{action}")
+                handler = getattr(self, "_cmd_" + action.replace("-", "_"))
                 expected = version + 1 if armed is not None else version
                 params = [] if action in GLOBAL else [self._checked_work(work, expected)]
                 if action == "publish":
@@ -253,11 +255,60 @@ class Coordinator:
         }, "queued", budget=budget, ttl=ttl)
         return self._ok(work, revision=work["revision"])
 
+    def _cmd_authorize_source(self, checkout, commit):
+        try:
+            resource, files = source.snapshot(checkout, commit)
+        except source.SourceError as exc:
+            raise Rejected(str(exc)) from exc
+        snapshot = source.snapshot_digest(files)
+        values = (checkout, resource, commit, snapshot, self._settings()["policy"])
+        self.db.execute("INSERT OR IGNORE INTO source_authorizations(path,resource,revision,snapshot,policy)"
+                        " VALUES (?,?,?,?,?)", values)
+        row = self._row("SELECT id FROM source_authorizations WHERE path=? AND resource=? "
+                        "AND revision=? AND snapshot=? AND policy=?", values)
+        self._event("source_authorized", actor="operator", authorization=row["id"],
+                    resource=resource, revision=commit, snapshot=snapshot)
+        return self._ok(authorization=row["id"], resource=resource, snapshot=snapshot)
+
+    def _cmd_submit_source(self, message, authorization, checkout, commit, budget=3, ttl=30):
+        self._require(_valid_id(message) and _valid_id(authorization), "invalid_source_request")
+        record = self._row("SELECT text FROM messages WHERE id=?", (message,))
+        self._require(record is not None, "unknown_message")
+        row = self._row("SELECT * FROM source_authorizations WHERE id=?", (authorization,))
+        self._require(row is not None and row["policy"] == self._settings()["policy"]
+                      and row["path"] == checkout and row["revision"] == commit,
+                      "source_not_authorized")
+        request = {"kind": "source_investigation", "message": message,
+                   "message_digest": digest(record["text"]), "policy": row["policy"],
+                   "resource": row["resource"], "base": commit, "snapshot": row["snapshot"],
+                   "source_authorization": authorization, "mode": "source",
+                   "scope": ["read_pinned_source", source.PROFILE]}
+        self._validate_budget(budget, ttl)
+        try:
+            self._source_files(request)
+        except source.SourceError as exc:
+            raise Rejected(str(exc)) from exc
+        work = self._new("investigate", request, "queued", budget=budget, ttl=ttl, profile="linux")
+        return self._ok(work, revision=work["revision"])
+
+    def _source_files(self, request):
+        row = self._row("SELECT * FROM source_authorizations WHERE id=?",
+                        (request["source_authorization"],))
+        if (row is None or row["policy"] != self._settings()["policy"]
+                or row["resource"] != request["resource"] or row["revision"] != request["base"]
+                or row["snapshot"] != request["snapshot"]):
+            raise source.SourceError("source_not_authorized")
+        _, files = source.snapshot(row["path"], row["revision"], row["resource"])
+        if source.snapshot_digest(files) != request["snapshot"]:
+            raise source.SourceError("source_snapshot_drift")
+        return files
+
     def _validate_budget(self, budget, ttl):
         self._require(type(budget) is int and 1 <= budget <= 100
                       and type(ttl) is int and 1 <= ttl <= 1000, "invalid_budget")
 
     def _cmd_propose(self, work, topic="fixture-topic", budget=10, ttl=30, prior_work=None):
+        self._require(self._revision(work)["kind"] != "source_investigation", "source_readonly")
         self._require(work["phase"] == "investigate" and work["state"] in
                       ("awaiting_acceptance", "completed", "rejected"), "investigation_required")
         evidence = self._evidence(work)
@@ -524,12 +575,22 @@ class Coordinator:
             if fault == "before_launch":
                 raise InjectedCrash("after durable claim, before launch")
             observed = self._execute_linux(stack, lock, job, command)
+            capture_key = None
             if fault == "after_worker":
                 raise InjectedCrash("after worker output, before durable acknowledgement")
 
             with transaction(self.db):
                 if not self._linux_current(job):
                     return self._linux_stale(job, command, fingerprint, observed["status"])
+                if job.mode == "source" and "streams" in observed:
+                    try:
+                        capture = source.capture(observed, self._revision(self._work(work_id)), job)
+                        capture_key = self.artifacts.put(capture)
+                    except (source.SourceError, EvidenceError):
+                        observed = {"status": "invalid_test_observation"}
+                    else:
+                        self._event("source_observed", work_id, actor="runner", attempt=job.id,
+                                    artifact=capture_key, status=capture["status"])
                 self.db.execute("UPDATE linux_runs SET status='observed' WHERE attempt=?", (job.id,))
                 self._event("linux_observed", work_id, actor="runner", command=command, attempt=job.id,
                             outcome=observed["status"], exit_code=observed.get("exit"),
@@ -540,7 +601,9 @@ class Coordinator:
             with transaction(self.db):
                 if not self._linux_current(job):
                     return self._linux_stale(job, command, fingerprint, observed["status"])
-                if observed["status"] == "observed":
+                if capture_key is not None and observed["status"] == "test_exited":
+                    result = self._finish_source(job, capture_key, fault)
+                elif observed["status"] == "observed" and job.mode != "source":
                     result = self._finish(job.worker, job, observed["output"], fault=fault, linux=True)
                 else:
                     result = self._interrupt(self._work(work_id), observed["status"])
@@ -554,13 +617,41 @@ class Coordinator:
                 return {"status": "worker_cancelled"}
             if self._evidence(self._work(job.work)) is None:
                 return {"status": "evidence_unavailable"}
+            files = None
+            if job.mode == "source":
+                try:
+                    files = self._source_files(self._revision(self._work(job.work)))
+                except source.SourceError as exc:
+                    return {"status": str(exc)}
+                if files["NEXUS_FIXTURE.json"] != b'{"fixture":"nx-004","dependency":"python-stdlib"}\n':
+                    return {"status": "dependency_unavailable"}
+                self._event("source_snapshot_verified", job.work, actor="runner", attempt=job.id,
+                            snapshot=source.snapshot_digest(files), profile=source.PROFILE)
             try:
-                process = stack.enter_context(self.runner.launch(lock, job))
+                launcher = self.runner.launch(lock, job, files=files) if files else self.runner.launch(lock, job)
+                process = stack.enter_context(launcher)
             except OSError:
                 return {"status": "supervisor_launch_failed"}
             self.db.execute("UPDATE linux_runs SET status='launched' WHERE attempt=?", (job.id,))
             self._event("linux_launched", job.work, actor="runner", command=command, attempt=job.id)
         return self.runner.wait(process, lambda: self._linux_current(job))
+
+    def _finish_source(self, job, key, fault):
+        work = self._work(job.work)
+        try:
+            capture = self.artifacts.get(key)
+        except EvidenceError:
+            return self._interrupt(work, "evidence_unavailable")
+        if capture["outcome"] not in ("command_passed", "command_exit_one"):
+            return self._interrupt(work, capture["outcome"])
+        self.db.execute("UPDATE attempts SET status='accepted' WHERE id=?", (job.id,))
+        self.db.execute("INSERT INTO checkpoints(work,attempt,phase,artifact,candidate)"
+                        " VALUES (?,?,?,?,NULL)", (job.work, job.id, job.phase, key))
+        self._event("checkpoint", job.work, attempt=job.id, artifact=key, phase=job.phase,
+                    candidate=None)
+        if fault in ("database_crash", "artifact_crash"):
+            raise InjectedCrash("after source capture publication, before checkpoint commit")
+        return self._handoff(work, capture["outcome"])
 
     def _linux_current(self, job):
         try:
@@ -728,6 +819,12 @@ class Coordinator:
             return self._handoff(work, continuation)
         if self._exhausted(work):
             return self._budget_failed(work)
+        request = self._revision(work)
+        if request["kind"] == "source_investigation" and self._permitted(work):
+            try:
+                self._source_files(request)
+            except source.SourceError as exc:
+                return self._blocked(work, str(exc))
         if not self._permitted(work):
             phase = work["phase"]
             if phase == "investigate":
@@ -942,6 +1039,7 @@ class Coordinator:
         return self._ok(work)
 
     def _cmd_archive(self, work, reference, revision):
+        self._require(self._revision(work)["kind"] != "source_investigation", "source_readonly")
         self._require(isinstance(reference, str) and isinstance(revision, str)
                       and len(reference) <= 128 and len(revision) <= 128, "invalid_reference")
         allowed = (work["phase"] == "investigate" and work["state"] in ("queued", "running")
@@ -958,6 +1056,18 @@ class Coordinator:
         row = self._row("SELECT * FROM messages WHERE id=?", (message,))
         self._require(row is not None, "unknown_message")
         return dict(row)
+
+    def source_evidence(self, principal, work_id, key):
+        self._require(principal is OPERATOR, "operator_required")
+        with transaction(self.db, write=False):
+            work = self._work(work_id)
+            self._require(self._revision(work)["kind"] == "source_investigation",
+                          "source_investigation_required")
+            observations = self.db.execute(
+                "SELECT data FROM events WHERE work=? AND kind='source_observed'", (work_id,))
+            self._require(any(json.loads(row["data"])["artifact"] == key for row in observations),
+                          "source_evidence_not_assigned")
+            return self.artifacts.get(key)
 
     def report(self, principal, work_id):
         """Redacted export. Free-form conversation is available only through message()."""
@@ -990,6 +1100,24 @@ class Coordinator:
                          "available": row["artifact"] in available,
                          "result": available.get(row["artifact"]), "attempt": row["attempt"]}
                         for row in checkpoints]
+            partial = []
+            if binding["kind"] == "source_investigation":
+                for item in evidence:
+                    if item["result"] is not None:
+                        item["result"].pop("streams", None)
+                checkpoint_keys = {item["digest"] for item in evidence}
+                for event in events:
+                    if event["kind"] != "source_observed":
+                        continue
+                    key = event["data"]["artifact"]
+                    if key in checkpoint_keys:
+                        continue
+                    try:
+                        data = self.artifacts.get(key)
+                        data.pop("streams", None)
+                    except EvidenceError:
+                        data = None
+                    partial.append({"digest": key, "result": data, "accepted": False})
             pending = None
             if work["state"] == "awaiting_approval":
                 pending = self._binding(work, work["phase"])
@@ -999,10 +1127,15 @@ class Coordinator:
                     handoff = self.artifacts.get(work["data"]["handoff"])
                 except EvidenceError:
                     pass
-            return {"work": work, "request": binding, "pending_approval": pending, "handoff": handoff,
+            result = {"work": work, "request": binding, "pending_approval": pending, "handoff": handoff,
                     "source_message_text": "[redacted]", "grants": grants, "attempts": attempts,
                     "evidence": evidence, "effects": effects, "events": events,
                     "limits": ["fixture-only execution and provider", "no live security validation"]}
+            if binding["kind"] == "source_investigation":
+                result["partial"] = partial
+                result["limits"] = ["Synthetic repository only", "Raw output omitted from report",
+                                    "Test text does not establish independent verification"]
+            return result
 
 
 def render_report(report):
@@ -1030,6 +1163,8 @@ def render_report(report):
     for event in report["events"]:
         if event["kind"] in ("approval_decision", "interrupted", "independent_review", "handoff_decision"):
             lines.append(f"Audit · {event['kind']} · {encode(event['data'])}")
+    for item in report.get("partial", []):
+        lines.append(f"Partial observation · {encode(item)}")
     lines.append(f"Audit events · {len(report['events'])}")
     lines.extend(f"Limit · {limit}" for limit in report["limits"])
     return "\n".join(lines)

@@ -49,18 +49,31 @@ class LinuxRunner:
         self.checkpoint_fault = checkpoint_fault
 
     @contextmanager
-    def launch(self, fd, job):
+    def launch(self, fd, job, *, files=None):
         payload = json.dumps({
             "phase": job.phase, "mode": job.mode, "candidate": job.candidate,
             "iteration": job.iteration, "base": BASE, "scope": SCOPE,
         }).encode("ascii")
         supervisor = Path(__file__).with_name("sandbox.py").resolve()
-        process = subprocess.Popen(
-            [sys.executable, "-I", "-S", "-B", supervisor, str(fd), str(self.timeout),
-             self.script.hex(), payload.hex()],
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-            close_fds=True, pass_fds=(fd,), cwd="/", env=ENV,
-        )
+        source_fd = None
+        try:
+            if files:
+                source_fd = os.memfd_create("source-snapshot", os.MFD_CLOEXEC)
+                with os.fdopen(os.dup(source_fd), "wb") as stream:
+                    stream.write(json.dumps({name: data.hex() for name, data in files.items()})
+                                 .encode("ascii"))
+                os.lseek(source_fd, 0, os.SEEK_SET)
+            extra = [] if source_fd is None else [str(source_fd)]
+            descriptors = (fd,) if source_fd is None else (fd, source_fd)
+            process = subprocess.Popen(
+                [sys.executable, "-I", "-S", "-B", supervisor, str(fd), str(self.timeout),
+                 self.script.hex(), payload.hex(), *extra],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                close_fds=True, pass_fds=descriptors, cwd="/", env=ENV,
+            )
+        finally:
+            if source_fd is not None:
+                os.close(source_fd)
         try:
             yield process
         finally:
