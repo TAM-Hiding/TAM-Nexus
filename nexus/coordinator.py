@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 from contextlib import ExitStack
+from pathlib import Path
+from tempfile import TemporaryDirectory
 import inspect
 import json
 import re
@@ -10,7 +12,7 @@ from .fixtures import (
     BASE, DEFAULT_WORKERS, PHASES, RESOURCE, SCOPE, FixtureBroker, archive_lookup,
     run_fixture,
 )
-from . import source
+from . import pilot, source
 from .linux_worker import RunnerBusy, dispatch_lock
 from .storage import (
     COORDINATOR_MIGRATIONS, SCHEMA, Artifacts, EvidenceError, InjectedCrash, digest, encode, open_database,
@@ -22,10 +24,10 @@ TERMINAL = frozenset(("completed", "rejected", "declined", "failed", "cancelled"
 COMMANDS = frozenset((
     "message", "submit", "propose", "decide", "revoke", "claim", "run", "resume",
     "recover", "cancel", "accept", "rework", "publish", "reconcile", "advance",
-    "policy", "register", "archive", "authorize-source", "submit-source",
+    "policy", "register", "archive", "authorize-source", "submit-source", "authorize-pilot", "submit-pilot",
 ))
 GLOBAL = frozenset(("message", "submit", "recover", "advance", "policy", "register",
-                    "authorize-source", "submit-source"))
+                    "authorize-source", "submit-source", "authorize-pilot", "submit-pilot"))
 LEASE_TICKS = 3
 
 
@@ -302,6 +304,55 @@ class Coordinator:
         if source.snapshot_digest(files) != request["snapshot"]:
             raise source.SourceError("source_snapshot_drift")
         return files
+
+    def _cmd_authorize_pilot(self, checkout, environment, manifest):
+        try:
+            spec = pilot.manifest(manifest)
+            resource, _ = pilot.checkout_files(checkout, spec)
+            source.canonical(environment)
+        except source.SourceError as exc:
+            raise Rejected(str(exc)) from exc
+        row = self.db.execute("INSERT INTO pilot_authorizations(checkout,environment,resource,"
+                              "manifest,policy) VALUES (?,?,?,?,?)",
+                              (checkout, environment, resource, encode(spec), self._settings()["policy"]))
+        self._event("pilot_authorized", actor="operator", authorization=row.lastrowid,
+                    resource=resource, manifest=digest(spec))
+        return self._ok(authorization=row.lastrowid, manifest=digest(spec))
+
+    def _cmd_submit_pilot(self, message, authorization, manifest, budget=3, ttl=30):
+        self._require(_valid_id(message) and _valid_id(authorization), "invalid_source_request")
+        record = self._row("SELECT text FROM messages WHERE id=?", (message,))
+        self._require(record is not None, "unknown_message")
+        try:
+            spec = pilot.manifest(manifest)
+        except source.SourceError as exc:
+            raise Rejected(str(exc)) from exc
+        row = self._row("SELECT * FROM pilot_authorizations WHERE id=?", (authorization,))
+        self._require(row is not None and row["manifest"] == encode(spec)
+                      and row["policy"] == self._settings()["policy"], "pilot_not_authorized")
+        request = {"kind": "source_investigation", "message": message,
+                   "message_digest": digest(record["text"]), "policy": row["policy"],
+                   "resource": row["resource"], "base": spec["revision"],
+                   "snapshot": spec["source_digest"], "manifest": spec,
+                   "source_authorization": authorization, "mode": "pilot",
+                   "scope": ["read_pinned_source", pilot.PROFILE]}
+        self._validate_budget(budget, ttl)
+        try:
+            self._pilot_inputs(request)
+        except source.SourceError as exc:
+            raise Rejected(str(exc)) from exc
+        work = self._new("investigate", request, "queued", budget=budget, ttl=ttl, profile="linux")
+        return self._ok(work, revision=work["revision"])
+
+    def _pilot_inputs(self, request):
+        row = self._row("SELECT * FROM pilot_authorizations WHERE id=?",
+                        (request["source_authorization"],))
+        spec = request["manifest"]
+        if (row is None or row["policy"] != self._settings()["policy"]
+                or row["resource"] != request["resource"] or row["manifest"] != encode(spec)):
+            raise source.SourceError("pilot_not_authorized")
+        _, files = pilot.checkout_files(row["checkout"], spec, row["resource"])
+        return row["environment"], files
 
     def _validate_budget(self, budget, ttl):
         self._require(type(budget) is int and 1 <= budget <= 100
@@ -582,7 +633,7 @@ class Coordinator:
             with transaction(self.db):
                 if not self._linux_current(job):
                     return self._linux_stale(job, command, fingerprint, observed["status"])
-                if job.mode == "source" and "streams" in observed:
+                if job.mode in ("source", "pilot") and "streams" in observed:
                     try:
                         capture = source.capture(observed, self._revision(self._work(work_id)), job)
                         capture_key = self.artifacts.put(capture)
@@ -603,7 +654,7 @@ class Coordinator:
                     return self._linux_stale(job, command, fingerprint, observed["status"])
                 if capture_key is not None and observed["status"] == "test_exited":
                     result = self._finish_source(job, capture_key, fault)
-                elif observed["status"] == "observed" and job.mode != "source":
+                elif observed["status"] == "observed" and job.mode not in ("source", "pilot"):
                     result = self._finish(job.worker, job, observed["output"], fault=fault, linux=True)
                 else:
                     result = self._interrupt(self._work(work_id), observed["status"])
@@ -611,14 +662,48 @@ class Coordinator:
                                 ("accepted" if result["ok"] else "failed", job.id))
                 return self._linux_response(command, fingerprint, work_id, result)
 
+    def _stage_pilot(self, stack, job, current):
+        with transaction(self.db, write=False):
+            if not current():
+                raise source.SourceError("worker_cancelled")
+            request = self._revision(self._work(job.work))
+            environment, pinned = self._pilot_inputs(request)
+        root = pilot.stage_root(self.root)
+        runtime = stack.enter_context(pilot.staged_runtime(
+            environment, request["manifest"]["dependency_digest"], root, current=current))
+        tree = Path(stack.enter_context(TemporaryDirectory(prefix="source-", dir=root)))
+        for name, data in pinned.items():
+            target = tree / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
+        return request, (runtime, tree)
+
     def _execute_linux(self, stack, lock, job, command):
+        def current():
+            return self._linux_current(job)
+
+        staged = None
+        if job.mode == "pilot":
+            try:
+                request, staged = self._stage_pilot(stack, job, current)
+            except source.SourceError as exc:
+                return {"status": str(exc)}
+            except (OSError, ValueError):
+                return {"status": "pilot_storage_unavailable"}
         with transaction(self.db):
-            if not self._linux_current(job):
+            if not current():
                 return {"status": "worker_cancelled"}
             if self._evidence(self._work(job.work)) is None:
                 return {"status": "evidence_unavailable"}
             files = None
-            if job.mode == "source":
+            if staged:
+                try:
+                    self._pilot_inputs(request)
+                except source.SourceError as exc:
+                    return {"status": str(exc)}
+                self._event("source_snapshot_verified", job.work, actor="runner", attempt=job.id,
+                            snapshot=request["snapshot"], profile=pilot.PROFILE)
+            elif job.mode == "source":
                 try:
                     files = self._source_files(self._revision(self._work(job.work)))
                 except source.SourceError as exc:
@@ -628,13 +713,28 @@ class Coordinator:
                 self._event("source_snapshot_verified", job.work, actor="runner", attempt=job.id,
                             snapshot=source.snapshot_digest(files), profile=source.PROFILE)
             try:
-                launcher = self.runner.launch(lock, job, files=files) if files else self.runner.launch(lock, job)
+                if staged:
+                    launcher = self.runner.launch(lock, job, pilot=staged)
+                elif files:
+                    launcher = self.runner.launch(lock, job, files=files)
+                else:
+                    launcher = self.runner.launch(lock, job)
                 process = stack.enter_context(launcher)
             except OSError:
                 return {"status": "supervisor_launch_failed"}
             self.db.execute("UPDATE linux_runs SET status='launched' WHERE attempt=?", (job.id,))
             self._event("linux_launched", job.work, actor="runner", command=command, attempt=job.id)
-        return self.runner.wait(process, lambda: self._linux_current(job))
+        if not staged:
+            return self.runner.wait(process, current)
+        observed = self.runner.wait(process, current, pilot=True)
+        with transaction(self.db, write=False):
+            try:
+                self._pilot_inputs(request)
+            except source.SourceError:
+                observed["source_unchanged"] = False
+            else:
+                observed["source_unchanged"] = True
+        return observed
 
     def _finish_source(self, job, key, fault):
         work = self._work(job.work)
@@ -822,7 +922,10 @@ class Coordinator:
         request = self._revision(work)
         if request["kind"] == "source_investigation" and self._permitted(work):
             try:
-                self._source_files(request)
+                if request["mode"] == "pilot":
+                    self._pilot_inputs(request)
+                else:
+                    self._source_files(request)
             except source.SourceError as exc:
                 return self._blocked(work, str(exc))
         if not self._permitted(work):

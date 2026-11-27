@@ -146,6 +146,11 @@ COORDINATOR_MIGRATIONS = ((
         revision TEXT NOT NULL, snapshot TEXT NOT NULL, policy INTEGER NOT NULL,
         UNIQUE(path,resource,revision,snapshot,policy)
     )""",
+), (
+    """CREATE TABLE pilot_authorizations (
+        id INTEGER PRIMARY KEY, checkout TEXT NOT NULL, environment TEXT NOT NULL,
+        resource TEXT NOT NULL, manifest TEXT NOT NULL, policy INTEGER NOT NULL
+    )""",
 ))
 
 

@@ -49,13 +49,16 @@ class LinuxRunner:
         self.checkpoint_fault = checkpoint_fault
 
     @contextmanager
-    def launch(self, fd, job, *, files=None):
+    def launch(self, fd, job, *, files=None, pilot=None):
         payload = json.dumps({
             "phase": job.phase, "mode": job.mode, "candidate": job.candidate,
             "iteration": job.iteration, "base": BASE, "scope": SCOPE,
         }).encode("ascii")
         supervisor = Path(__file__).with_name("sandbox.py").resolve()
         source_fd = None
+        pilot_fds = []
+        script = self.script
+        timeout = self.timeout
         try:
             if files:
                 source_fd = os.memfd_create("source-snapshot", os.MFD_CLOEXEC)
@@ -65,15 +68,26 @@ class LinuxRunner:
                 os.lseek(source_fd, 0, os.SEEK_SET)
             extra = [] if source_fd is None else [str(source_fd)]
             descriptors = (fd,) if source_fd is None else (fd, source_fd)
+            if pilot:
+                runtime, tree = pilot
+                for directory in (runtime, tree):
+                    if directory is not None:
+                        pilot_fds.append(os.open(directory, os.O_DIRECTORY | os.O_NOFOLLOW))
+                extra = ["pilot", str(pilot_fds[0]), str(pilot_fds[1]) if tree is not None else "-"]
+                descriptors += tuple(pilot_fds)
+                script = Path(__file__).with_name("hero_cad_test.py").read_bytes()
+                timeout = 15
             process = subprocess.Popen(
-                [sys.executable, "-I", "-S", "-B", supervisor, str(fd), str(self.timeout),
-                 self.script.hex(), payload.hex(), *extra],
+                [sys.executable, "-I", "-S", "-B", supervisor, str(fd), str(timeout),
+                 script.hex(), payload.hex(), *extra],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                 close_fds=True, pass_fds=descriptors, cwd="/", env=ENV,
             )
         finally:
             if source_fd is not None:
                 os.close(source_fd)
+            for handle in pilot_fds:
+                os.close(handle)
         try:
             yield process
         finally:
@@ -85,9 +99,9 @@ class LinuxRunner:
                 pass
             process.stdout.close()
 
-    def wait(self, process, current):
+    def wait(self, process, current, *, pilot=False):
         output = bytearray()
-        deadline = time.monotonic() + self.timeout + 3
+        deadline = time.monotonic() + (15 if pilot else self.timeout) + 3
         with selectors.DefaultSelector() as select:
             select.register(process.stdout, selectors.EVENT_READ)
             while True:
