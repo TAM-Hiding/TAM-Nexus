@@ -104,11 +104,12 @@ class FailClosedTests(LinuxState):
         work = self.submit()
         before = self.coordinator.report(OPERATOR, work)
         with sqlite3.connect(self.root / "nexus.sqlite3") as old:
+            old.execute("DROP TABLE pilot_authorizations")
             old.execute("DROP TABLE source_authorizations")
             old.execute("DROP TABLE linux_runs")
             old.execute("PRAGMA user_version=1")
         with Coordinator(self.root) as reopened:
-            self.assertEqual(reopened.db.execute("PRAGMA user_version").fetchone()[0], 3)
+            self.assertEqual(reopened.db.execute("PRAGMA user_version").fetchone()[0], 4)
             self.assertEqual(reopened.report(OPERATOR, work), before)
 
     def test_linux_arm_prevents_fallback_and_preserves_budget(self):
@@ -262,7 +263,13 @@ with Coordinator(sys.argv[1], runner=LinuxRunner(script=bytes.fromhex(sys.argv[2
         self.ok("recover")
         self.ok("resume", work)
         with Coordinator(self.root, runner=LinuxRunner()) as reopened:
-            self.ok("run", work, coordinator=reopened)
+            deadline = time.monotonic() + 4
+            while True:
+                outcome = self.request("run", work, coordinator=reopened)
+                if outcome.get("reason") != "runner_busy" or time.monotonic() >= deadline:
+                    break
+                time.sleep(0.01)
+            self.assertTrue(outcome["ok"], outcome)
         report = self.coordinator.report(OPERATOR, work)
         self.assertEqual([item["status"] for item in report["attempts"]], ["interrupted", "accepted"])
         self.assertEqual(len(report["evidence"]), 1)

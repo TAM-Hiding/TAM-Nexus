@@ -181,9 +181,24 @@ def capture(observed, request, job):
     if exit_code == 1 and missing_reported:
         outcome = "dependency_reported_missing"
         limitations.append("The import error is test-reported and unverified.")
+    extra = {}
+    if "manifest" in request:
+        manifest = request["manifest"]
+        unchanged = observed.get("source_unchanged")
+        if type(unchanged) is not bool:
+            raise SourceError("invalid_test_observation")
+        extra = {"manifest_digest": digest(manifest), "repository": manifest["repository"],
+                 "dependency_digest": manifest["dependency_digest"], "source_unchanged": unchanged}
+        if not unchanged:
+            outcome = "source_changed_during_run"
+        elif exit_code == 78:
+            outcome = "dependency_unavailable"
+        elif exit_code in (2, 3, 4, 5, 79, 126, 127):
+            outcome = "test_infrastructure_failure"
     return {
-        "kind": "source_test_capture", "resource": request["resource"], "base": request["base"],
-        "snapshot": request["snapshot"], "scope": request["scope"], "command": PROFILE,
+        **extra, "kind": "source_test_capture", "resource": request["resource"], "base": request["base"],
+        "snapshot": request["snapshot"], "scope": request["scope"],
+        "command": request.get("manifest", {}).get("profile", PROFILE),
         "sandbox": SANDBOX_PROFILE, "worker": job.worker, "attempt": job.id,
         "authorization": request["source_authorization"], "revision": job.revision,
         "status": status, "exit_status": exit_code, "elapsed_ms": elapsed,

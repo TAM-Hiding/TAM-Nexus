@@ -5,6 +5,7 @@ import json
 import sqlite3
 import sys
 
+from . import pilot, source
 from .coordinator import OPERATOR, Coordinator, Rejected, render_report
 from .linux_worker import LinuxRunner
 from .storage import EvidenceError, InjectedCrash
@@ -33,11 +34,20 @@ def main(argv=None):
     parser.add_argument("--runner", choices=("fake", "linux"), default="fake",
                         help="fixture execution profile for run")
     sub = parser.add_subparsers(dest="verb", required=True)
+    preflight = sub.add_parser("preflight", help="probe Linux and optional approved dependencies")
+    preflight.add_argument("--environment")
+    preflight.add_argument("--digest")
+    manifest = sub.add_parser("pilot-manifest", help="fingerprint a pinned git archive from stdin")
+    manifest.add_argument("revision")
+    manifest.add_argument("dependency_digest")
+    runtime = sub.add_parser("runtime-digest", help="fingerprint a provisioned runtime")
+    runtime.add_argument("environment")
     command = sub.add_parser("command", help="submit an operator command")
     command.add_argument("action")
     command.add_argument("--id", required=True, help="unique command ID for retries")
     command.add_argument("--work", type=int)
     command.add_argument("--version", type=int)
+    command.add_argument("--manifest", help="read an approved pilot JSON manifest")
     command.add_argument("--args", default="{}", help="JSON action arguments, or - for stdin")
     report = sub.add_parser("report", help="read a redacted report")
     report.add_argument("work", type=int)
@@ -50,12 +60,30 @@ def main(argv=None):
     options = parser.parse_args(argv)
 
     try:
+        if options.verb == "preflight":
+            if bool(options.environment) != bool(options.digest):
+                parser.error("preflight requires both --environment and --digest")
+            result = pilot.preflight(options.environment, options.digest)
+            print(json.dumps(result, indent=2, sort_keys=True))
+            return 0 if result["ok"] else 2
+        if options.verb == "pilot-manifest":
+            result = pilot.manifest_from_archive(options.revision, options.dependency_digest, sys.stdin.buffer)
+            print(json.dumps(result, indent=2, sort_keys=True))
+            return 0
+        if options.verb == "runtime-digest":
+            print(pilot.runtime_digest(options.environment))
+            return 0
         runner = LinuxRunner() if options.runner == "linux" else None
         with Coordinator(options.state, runner=runner) as coordinator:
             if options.verb == "command":
                 raw = sys.stdin.read(16385) if options.args == "-" else options.args
+                arguments = _read_arguments(raw)
+                if options.manifest:
+                    if options.action not in ("authorize-pilot", "submit-pilot") or "manifest" in arguments:
+                        parser.error("--manifest is only for pilot commands and must be supplied once")
+                    arguments["manifest"] = pilot.load_manifest(options.manifest)
                 result = coordinator.execute(OPERATOR, options.id, options.action, work=options.work,
-                                             version=options.version, **_read_arguments(raw))
+                                             version=options.version, **arguments)
                 print(json.dumps(result, sort_keys=True))
                 return 0 if result["ok"] else 2
             if options.verb == "report":
@@ -66,7 +94,7 @@ def main(argv=None):
                                  sort_keys=True))
             else:
                 print(json.dumps(coordinator.message(OPERATOR, options.message), sort_keys=True))
-    except (Rejected, ValueError, RecursionError, OSError, sqlite3.Error,
+    except (source.SourceError, Rejected, ValueError, RecursionError, OSError, sqlite3.Error,
             EvidenceError, InjectedCrash) as exc:
         print(json.dumps({"ok": False, "reason": str(exc)}), file=sys.stderr)
         return 2

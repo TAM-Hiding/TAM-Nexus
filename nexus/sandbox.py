@@ -54,7 +54,7 @@ def require_host():
         if not os.access(path, os.X_OK):
             raise SandboxUnavailable(f"missing_{Path(path).name}")
     python = Path(SYSTEM_PYTHON).resolve()
-    if python.parent != Path("/usr/bin") or not re.fullmatch(r"python3\.(1[1-9]|[2-9][0-9])", python.name):
+    if python.parent != Path("/usr/bin") or not re.fullmatch(r"python3\.(1[0-9]|[2-9][0-9])", python.name):
         raise SandboxUnavailable("unsupported_system_python")
     stdlib = Path("/usr/lib") / python.name
     if not stdlib.is_dir():
@@ -95,7 +95,7 @@ def _filter(fd):
         lib.seccomp_release(ctx)
 
 
-def _command(python, stdlib, mounts, filter_fd, status_fd, source):
+def _command(python, stdlib, mounts, filter_fd, status_fd, source, pilot=None):
     args = [
         PRLIMIT, "--as=268435456:268435456", "--cpu=3:3", "--nproc=64:64",
         "--nofile=64:64", "--core=0:0", "--fsize=4194304:4194304", "--",
@@ -107,17 +107,31 @@ def _command(python, stdlib, mounts, filter_fd, status_fd, source):
         "--symlink", "usr/lib", "/lib", "--dir", "/lib64",
         "--symlink", f"/usr/lib/{TRIPLET}/{LOADER}", f"/lib64/{LOADER}",
     ]
+    if pilot:
+        args[1:3] = ["--as=2147483648:2147483648", "--cpu=12:12"]
     for name in (*LIBRARIES, LOADER):
         path = f"/usr/lib/{TRIPLET}/{name}"
         args.extend(("--ro-bind", path, path))
     for path, fd in mounts:
         args.extend(("--ro-bind-data", str(fd), path))
+    if pilot:
+        runtime_fd, source_fd, preflight = pilot
+        args.extend(("--ro-bind-fd", str(runtime_fd), "/runtime"))
+        if source_fd is not None:
+            args.extend(("--ro-bind-fd", str(source_fd), "/source"))
     args.extend((
         "--perms", "0700", "--size", "4194304", "--tmpfs", "/scratch",
         "--remount-ro", "/", "--clearenv", "--setenv", "HOME", "/nonexistent",
         "--setenv", "LANG", "C", "--setenv", "LC_ALL", "C", "--chdir", "/scratch",
-        "--", "/usr/bin/python3", "-I", "-S", "-B",
     ))
+    if pilot:
+        args.extend(("--setenv", "TMPDIR", "/scratch", "--setenv", "LD_LIBRARY_PATH",
+                     "/runtime/lib:/runtime/native",
+                     "--", "/runtime/bin/python3", "-I", "-S", "-B", "/input/hero_cad_test.py"))
+        if preflight:
+            args.append("preflight")
+        return args
+    args.extend(("--", "/usr/bin/python3", "-I", "-S", "-B"))
     args.extend(("-m", "unittest", "discover", "-s", "/source", "-p", "test_model.py", "-v")
                 if source else ("/input/worker.py",))
     return args
@@ -265,11 +279,13 @@ def _parse_output(output):
     return value
 
 
-def supervise(script, fixture, timeout, control, *, files=None):
+def supervise(script, fixture, timeout, control, *, files=None, pilot=None):
     with ExitStack() as stack:
         try:
             python, stdlib = require_host()
-            if files is None:
+            if pilot:
+                inputs = {"/input/hero_cad_test.py": script, "/input/pytest.ini": b"[pytest]\n"}
+            elif files is None:
                 inputs = {"/input/worker.py": script, "/input/job.json": fixture}
             else:
                 names = {"NEXUS_FIXTURE.json", "model.py", "test_model.py"}
@@ -281,11 +297,13 @@ def supervise(script, fixture, timeout, control, *, files=None):
             _filter(filter_fd)
             status_read, status_write = os.pipe()
             stack.callback(os.close, status_read)
+            capture_streams = files is not None or pilot is not None
+            pilot_fds = tuple(fd for fd in pilot[:2] if fd is not None) if pilot else ()
             try:
                 process = subprocess.Popen(
-                    _command(python, stdlib, mounts, filter_fd, status_write, files is not None),
-                    stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE if files is not None else subprocess.DEVNULL,
-                    close_fds=True, pass_fds=(*[fd for _, fd in mounts], filter_fd, status_write),
+                    _command(python, stdlib, mounts, filter_fd, status_write, files is not None, pilot),
+                    stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE if capture_streams else subprocess.DEVNULL,
+                    close_fds=True, pass_fds=(*[fd for _, fd in mounts], filter_fd, status_write, *pilot_fds),
                     cwd="/", env=ENV,
                 )
             finally:
@@ -297,7 +315,7 @@ def supervise(script, fixture, timeout, control, *, files=None):
             return {"status": "sandbox_unavailable", "detail": str(exc)}
         except OSError:
             return {"status": "sandbox_setup_failed"}
-        return _collect(process, status_read, control, timeout, files is not None)
+        return _collect(process, status_read, control, timeout, capture_streams)
 
 
 if __name__ == "__main__":
@@ -307,13 +325,16 @@ if __name__ == "__main__":
     try:
         os.fstat(int(lock_fd))
         files = None
-        if source:
+        pilot = None
+        if source and source[0] == "pilot":
+            pilot = (int(source[1]), None if source[2] == "-" else int(source[2]), source[2] == "-")
+        elif source:
             with os.fdopen(int(source[0]), "rb") as stream:
                 serialized = stream.read(74001)
             if len(serialized) > 74000:
                 raise SandboxUnavailable("source_manifest_mismatch")
             files = {key: bytes.fromhex(value) for key, value in json.loads(serialized).items()}
-        result = supervise(bytes.fromhex(script), bytes.fromhex(fixture), float(timeout), 0, files=files)
+        result = supervise(bytes.fromhex(script), bytes.fromhex(fixture), float(timeout), 0, files=files, pilot=pilot)
         print(json.dumps(result, ensure_ascii=True, allow_nan=False))
     finally:
         os.close(int(lock_fd))
