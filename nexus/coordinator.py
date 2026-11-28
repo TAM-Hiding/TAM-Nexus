@@ -23,12 +23,12 @@ from .storage import (
 OPERATOR = object()
 TERMINAL = frozenset(("completed", "rejected", "declined", "failed", "cancelled"))
 COMMANDS = frozenset((
-    "start-reasoning",
+    "start-reasoning", "conclude",
     "message", "submit", "propose", "decide", "revoke", "claim", "run", "resume",
     "recover", "cancel", "accept", "rework", "publish", "reconcile", "advance",
     "policy", "register", "archive", "authorize-source", "submit-source", "authorize-pilot", "submit-pilot",
 ))
-GLOBAL = frozenset(("start-reasoning", "message", "submit", "recover", "advance", "policy", "register",
+GLOBAL = frozenset(("conclude", "start-reasoning", "message", "submit", "recover", "advance", "policy", "register",
                     "authorize-source", "submit-source", "authorize-pilot", "submit-pilot"))
 LEASE_TICKS = 3
 
@@ -897,13 +897,17 @@ class Coordinator:
         self._event("clock_advanced", actor="operator", ticks=ticks)
         return self._ok(tick=self._settings()["tick"])
 
-    def _cmd_start_reasoning(self, objective, works):
+    def _cmd_start_reasoning(self, objective, works, implementation="deterministic-investigator-v1"):
         from .reasoning_service import _issue
         try:
-            invocation = _issue(self, objective, works)
+            invocation = _issue(self, objective, works, implementation)
         except ValueError as exc:
             raise Rejected(str(exc)) from exc
         return self._ok(invocation=invocation)
+
+    def _cmd_conclude(self, invocation, hypothesis_digest, evidence, disposition, rationale, uncertainty):
+        from .conclusions import _conclude
+        return _conclude(self, invocation, hypothesis_digest, evidence, disposition, rationale, uncertainty)
 
     def _cmd_policy(self):
         from .reasoning_service import fence_active

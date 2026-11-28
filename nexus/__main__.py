@@ -35,7 +35,11 @@ def _reasoning_parser(sub):
     start.add_argument("work", type=int, nargs="+", help="authorized source investigation IDs")
     start.add_argument("--id", required=True, help="unique command ID, reused for identical retries")
     start.add_argument("--objective", required=True, help="objective disclosed to the stand-in")
+    start.add_argument("--implementation", choices=("deterministic-investigator-v1", "mock-v1", "llama-unix-v1"),
+                       default="deterministic-investigator-v1")
     for action, help_text in (
+        ("preview", "inspect exact inference disclosure and recipient"),
+        ("disclose", "authorize the exact inference disclosure"),
         ("run", "run the fixed deterministic investigator"),
         ("show", "inspect the invocation and exact proposal"),
         ("cancel", "fence an unfinished invocation"),
@@ -45,7 +49,7 @@ def _reasoning_parser(sub):
     ):
         item = actions.add_parser(action, help=help_text)
         item.add_argument("invocation", type=int)
-        if action in ("approve", "reject", "execute"):
+        if action in ("approve", "reject", "execute", "disclose"):
             item.add_argument("digest", help="SHA-256 of the operator-reviewed proposal")
 
 
@@ -54,8 +58,14 @@ def _reasoning_command(coordinator, options):
 
     action = options.reason_action
     if action == "start":
-        invocation = reasoning_service.start(coordinator, OPERATOR, options.objective, options.work, options.id)
+        invocation = reasoning_service.start(coordinator, OPERATOR, options.objective, options.work, options.id,
+                                             options.implementation)
         return {"invocation": invocation}
+    if action in ("preview", "disclose"):
+        from . import model_disclosure
+        if action == "preview":
+            return model_disclosure.preview(coordinator, OPERATOR, options.invocation)
+        return model_disclosure.disclose(coordinator, OPERATOR, options.invocation, options.digest)
     if action == "show":
         return reasoning_service.report(coordinator, OPERATOR, options.invocation)
     if action == "run":
@@ -125,7 +135,7 @@ def main(argv=None):
             print(pilot.runtime_digest(options.environment))
             return 0
         runner = LinuxRunner() if options.runner == "linux" else None
-        readonly = options.verb == "handoff" or (options.verb == "reason" and options.reason_action == "show")
+        readonly = options.verb == "handoff" or (options.verb == "reason" and options.reason_action in ("show", "preview"))
         with Coordinator(options.state, runner=runner, readonly=readonly) as coordinator:
             if options.verb == "reason":
                 result = _reasoning_command(coordinator, options)

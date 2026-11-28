@@ -35,14 +35,16 @@ def _request(c, row):
     return request
 
 
-def start(c, principal, objective, works, command):
-    result = c.execute(principal, command, "start-reasoning", works=works, objective=objective)
+def start(c, principal, objective, works, command, implementation=WORKER):
+    # Preserve fingerprints for NX-007 commands retried after migration.
+    options = {} if implementation == WORKER else {"implementation": implementation}
+    result = c.execute(principal, command, "start-reasoning", works=works, objective=objective, **options)
     if not result["ok"]:
         raise Rejected(result["reason"])
     return result["invocation"]
 
 
-def _issue(c, objective, works):
+def _issue(c, objective, works, implementation=WORKER):
     """Operator command handler. All writes share its deduplication transaction."""
     c._require(type(works) is list and 1 <= len(works) <= handoff.MAX_WORKS
                and all(_valid_id(w) for w in works) and len(set(works)) == len(works),
@@ -52,10 +54,17 @@ def _issue(c, objective, works):
         count = c._row("SELECT COUNT(*) FROM reasoning_charges WHERE work=?", (work,))[0]
         c._require(count < reasoning.MAX_INVOCATIONS, "reasoning_budget_exhausted")
     c._require(isinstance(objective, str) and 0 < len(objective) <= 600, "invalid_reasoning_objective")
+    from . import model_disclosure
+    c._require(type(implementation) is str and implementation in (WORKER, *model_disclosure.IMPLEMENTATIONS),
+               "unsupported_reasoning_implementation")
     invocation = c.db.execute(
-        "INSERT INTO reasoning_invocations(origin,objective,works,policy,status) VALUES(?,?,?,?,'issued')",
-        (works[0], objective, encode(works), c._settings()["policy"])).lastrowid
-    key = digest(_request(c, _invocation(c, invocation)))
+        "INSERT INTO reasoning_invocations(origin,objective,works,policy,implementation,status) VALUES(?,?,?,?,?,'issued')",
+        (works[0], objective, encode(works), c._settings()["policy"], implementation)).lastrowid
+    request = _request(c, _invocation(c, invocation))
+    if implementation != WORKER:
+        from . import demo_disclosure
+        demo_disclosure.validate(request)
+    key = digest(request)
     for work in works:
         rows = c.db.execute(
             "SELECT i.* FROM reasoning_invocations i JOIN reasoning_charges r ON i.id=r.invocation "
@@ -65,7 +74,7 @@ def _issue(c, objective, works):
     c.db.execute("UPDATE reasoning_invocations SET input_digest=? WHERE id=?", (key, invocation))
     c.db.executemany("INSERT INTO reasoning_charges VALUES(?,?)", [(invocation, w) for w in works])
     c._event("reasoning_authorized", works[0], actor="operator", invocation=invocation,
-             input_digest=key, works=works, worker=WORKER)
+             input_digest=key, works=works, worker=implementation)
     return invocation
 
 
@@ -100,7 +109,7 @@ def _accept(c, invocation, output):
     if result["experiment"] is not None:
         # Origin, authority, limits and all source identities come from the coordinator.
         target = request["handoff"]["investigations"][0]
-        spec = {"version": 1, "invocation": invocation, "worker": WORKER, "origin": row["origin"],
+        spec = {"version": 1, "invocation": invocation, "worker": row["implementation"], "origin": row["origin"],
                 "input_digest": row["input_digest"], "target_source": target,
                 "permission": ACTION, "request": result["experiment"],
                 "limits": {"max_runs": 1, "wall_seconds": 15, "output_bytes": 8192}}
@@ -120,6 +129,9 @@ def _accept(c, invocation, output):
 
 def run(c, principal, invocation):
     _operator(principal)
+    if _invocation(c, invocation)["implementation"] != WORKER:
+        from .model_disclosure import invoke
+        return invoke(c, principal, invocation)
     runner = LinuxRunner(script=Path(reasoning.__file__).read_bytes(), timeout=reasoning.MAX_SECONDS)
     try:
         with dispatch_lock(c.root) as fd, ExitStack() as stack:
@@ -220,7 +232,9 @@ def report(c, principal, invocation):
         from .experiment_execution import execution_report
         execution = execution_report(c, invocation)
         supported = p is not None and "execution_plan" in json.loads(p["spec"])
-        return {"invocation": invocation, "status": row["status"], "reason": row["reason"],
+        from . import conclusions, model_disclosure
+        return {**conclusions.report(c, row), **model_disclosure.audit(c, row),
+                "invocation": invocation, "status": row["status"], "reason": row["reason"],
                 "origin": row["origin"], "input_digest": row["input_digest"],
                 "reasoning": json.loads(row["output"]) if row["output"] else None,
                 "classification": "unverified_reasoning", "proposal": json.loads(p["spec"]) if p else None,
