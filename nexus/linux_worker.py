@@ -13,7 +13,7 @@ import sys
 import time
 
 from .fixtures import BASE, SCOPE
-from .sandbox import ENV, MAX_OUTPUT, TIMEOUT
+from .sandbox import BWRAP_CONFIG, ENV, MAX_OUTPUT, TIMEOUT
 
 FINDINGS = Path(__file__).with_name("worker_fixture.py")
 
@@ -95,7 +95,8 @@ class LinuxRunner:
                 [sys.executable, "-I", "-S", "-B", supervisor, str(fd), str(timeout),
                  script.hex(), payload, *extra],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                close_fds=True, pass_fds=descriptors, cwd="/", env=ENV,
+                close_fds=True, pass_fds=descriptors, cwd="/",
+                env={**ENV, **{key: os.environ[key] for key in BWRAP_CONFIG if key in os.environ}},
             )
         finally:
             if source_fd is not None:

@@ -3,6 +3,8 @@
 import base64
 import ctypes
 import errno
+import fcntl
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -10,10 +12,11 @@ import platform
 import re
 import selectors
 import signal
+import stat
 import subprocess
 import sys
 import time
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 
 BWRAP = "/usr/bin/bwrap"
 UNSHARE = "/usr/bin/unshare"
@@ -37,6 +40,70 @@ class SandboxUnavailable(Exception):
     pass
 
 
+BWRAP_CONFIG = ("NEXUS_BWRAP", "NEXUS_BWRAP_SHA256")
+REQUIRED_FLAGS = ("--ro-bind-fd", "--json-status-fd", "--ro-bind-data", "--disable-userns")
+
+
+@contextmanager
+def bubblewrap():
+    """Pin alternate launcher bytes before probing or executing them."""
+    path, expected = (os.environ.get(key) for key in BWRAP_CONFIG)
+    if path is None and expected is None:
+        if not os.access(BWRAP, os.X_OK):
+            raise SandboxUnavailable("missing_bwrap")
+        yield BWRAP, ()
+        return
+    if (not path or not path.startswith("/") or any(part in ("", ".", "..") for part in path[1:].split("/"))
+            or not re.fullmatch(r"[a-f0-9]{64}", expected or "")):
+        raise SandboxUnavailable("invalid_bwrap_configuration")
+    with ExitStack() as stack:
+        try:
+            parts = path[1:].split("/")
+            flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_DIRECTORY
+            parent = os.open("/", flags)
+            stack.callback(os.close, parent)
+            for part in parts[:-1]:
+                parent = os.open(part, flags, dir_fd=parent)
+                stack.callback(os.close, parent)
+                if os.fstat(parent).st_mode & 0o022:
+                    raise SandboxUnavailable("unsafe_bwrap_directory")
+            fd = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+            stream = stack.enter_context(os.fdopen(fd, "rb"))
+            info = os.fstat(fd)
+            if (not stat.S_ISREG(info.st_mode) or info.st_mode & 0o6022
+                    or not os.access(f"/proc/self/fd/{fd}", os.X_OK)
+                    or os.fstatvfs(fd).f_flag & os.ST_NOEXEC):
+                raise SandboxUnavailable("unsafe_bwrap_executable")
+            data = stream.read(4 * 1024 * 1024 + 1)
+            if len(data) > 4 * 1024 * 1024 or not data.startswith(b"\x7fELF"):
+                raise SandboxUnavailable("invalid_bwrap_executable")
+            if hashlib.sha256(data).hexdigest() != expected:
+                raise SandboxUnavailable("bwrap_digest_mismatch")
+            image = os.memfd_create("trusted-bwrap", os.MFD_CLOEXEC | os.MFD_ALLOW_SEALING)
+            stack.callback(os.close, image)
+            if os.write(image, data) != len(data):
+                raise SandboxUnavailable("bwrap_snapshot_failed")
+            os.fchmod(image, 0o500)
+            # Linux UAPI values from linux/fcntl.h. Some CPython builds omit the names.
+            add_seals = getattr(fcntl, "F_ADD_SEALS", 1033)
+            seal_write_grow_shrink_and_seal = 0x0008 | 0x0004 | 0x0002 | 0x0001
+            fcntl.fcntl(image, add_seals, seal_write_grow_shrink_and_seal)
+        except OSError as exc:
+            raise SandboxUnavailable("bwrap_open_or_seal_failed") from exc
+        yield f"/proc/self/fd/{image}", (image,)
+
+
+def missing_flags(executable, fds):
+    try:
+        help_text = subprocess.run([executable, "--help"], pass_fds=fds, env=ENV,
+                                   stdin=subprocess.DEVNULL, capture_output=True, timeout=3, check=True).stdout
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise SandboxUnavailable("bwrap_probe_failed") from exc
+    options = help_text.split()
+    required = (*REQUIRED_FLAGS, "--block-fd") if fds else REQUIRED_FLAGS
+    return [flag for flag in required if flag.encode() not in options]
+
+
 def require_host():
     if sys.platform != "linux" or platform.machine() != "x86_64" or os.geteuid() == 0:
         raise SandboxUnavailable("unsupported_host")
@@ -50,7 +117,9 @@ def require_host():
             os.close(trial)
     except OSError as exc:
         raise SandboxUnavailable("pidfd_unavailable") from exc
-    for path in (BWRAP, UNSHARE, PRLIMIT, SYSTEM_PYTHON):
+    if not any(key in os.environ for key in BWRAP_CONFIG) and not os.access(BWRAP, os.X_OK):
+        raise SandboxUnavailable(f"missing_{Path(BWRAP).name}")
+    for path in (UNSHARE, PRLIMIT, SYSTEM_PYTHON):
         if not os.access(path, os.X_OK):
             raise SandboxUnavailable(f"missing_{Path(path).name}")
     python = Path(SYSTEM_PYTHON).resolve()
@@ -95,12 +164,14 @@ def _filter(fd):
         lib.seccomp_release(ctx)
 
 
-def _command(python, stdlib, mounts, filter_fd, status_fd, source, pilot=None, crosscheck=False):
+def _command(executable, exe_fds, python, stdlib, mounts, filter_fd, status_fd, source, pilot=None, crosscheck=False):
     args = [
         PRLIMIT, "--as=268435456:268435456", "--cpu=3:3", "--nproc=64:64",
         "--nofile=64:64", "--core=0:0", "--fsize=4194304:4194304", "--",
         UNSHARE, "--user", "--map-current-user", "--net", "--",
-        BWRAP, "--unshare-user", "--unshare-ipc", "--unshare-pid", "--unshare-uts",
+        # bwrap consumes and closes its block fd before worker exec. The sealed
+        # regular file is at EOF, so this cannot wait on an external writer.
+        executable, *(("--block-fd", str(exe_fds[0])) if exe_fds else ()), "--unshare-user", "--unshare-ipc", "--unshare-pid", "--unshare-uts",
         "--disable-userns", "--cap-drop", "ALL", "--new-session", "--die-with-parent",
         "--as-pid-1", "--json-status-fd", str(status_fd), "--seccomp", str(filter_fd),
         "--ro-bind", str(python), "/usr/bin/python3", "--ro-bind", str(stdlib), str(stdlib),
@@ -284,6 +355,9 @@ def supervise(script, fixture, timeout, control, *, files=None, pilot=None, cros
     with ExitStack() as stack:
         try:
             python, stdlib = require_host()
+            executable, exe_fds = stack.enter_context(bubblewrap())
+            if missing_flags(executable, exe_fds):
+                raise SandboxUnavailable("bwrap_missing_flags")
             if crosscheck:
                 if not pilot or pilot[1] is None or pilot[2]:
                     raise SandboxUnavailable("invalid_crosscheck_profile")
@@ -306,9 +380,9 @@ def supervise(script, fixture, timeout, control, *, files=None, pilot=None, cros
             pilot_fds = tuple(fd for fd in pilot[:2] if fd is not None) if pilot else ()
             try:
                 process = subprocess.Popen(
-                    _command(python, stdlib, mounts, filter_fd, status_write, files is not None, pilot, crosscheck),
+                    _command(executable, exe_fds, python, stdlib, mounts, filter_fd, status_write, files is not None, pilot, crosscheck),
                     stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE if capture_streams else subprocess.DEVNULL,
-                    close_fds=True, pass_fds=(*[fd for _, fd in mounts], filter_fd, status_write, *pilot_fds),
+                    close_fds=True, pass_fds=(*exe_fds, *[fd for _, fd in mounts], filter_fd, status_write, *pilot_fds),
                     cwd="/", env=ENV,
                 )
             finally:

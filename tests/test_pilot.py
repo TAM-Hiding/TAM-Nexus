@@ -162,7 +162,7 @@ class PilotTests(LinuxState):
         self.assertEqual(list(stage.iterdir()), [])
 
     def test_preflight_fails_closed_on_missing_sandbox(self):
-        with patch("nexus.sandbox.BWRAP", "/no/bubblewrap"):
+        with patch.dict(os.environ, {}, clear=True), patch("nexus.sandbox.BWRAP", "/no/bubblewrap"):
             result = pilot.preflight()
         self.assertFalse(result["ok"])
         self.assertEqual(result["checks"]["host"], "missing_bubblewrap")

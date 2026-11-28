@@ -96,7 +96,7 @@ class LinuxState(unittest.TestCase):
 
 class FailClosedTests(LinuxState):
     def test_missing_required_sandbox_dependency_refuses_execution(self):
-        with patch("nexus.sandbox.BWRAP", "/no/such/bwrap"), control_pipe() as control:
+        with patch.dict(os.environ, {}, clear=True), patch("nexus.sandbox.BWRAP", "/no/such/bwrap"), control_pipe() as control:
             result = supervise(b"raise RuntimeError('worker ran')", b"{}", 0.2, control)
         self.assertEqual(result["status"], "sandbox_unavailable")
 

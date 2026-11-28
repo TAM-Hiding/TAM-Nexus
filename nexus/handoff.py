@@ -179,6 +179,13 @@ def build(coordinator, works, notes=None, *, include_followups=False):
                 issues.append({"work": work_id, "reason": str(exc)})
         if spec:
             pilot.manifest(spec)
+            approval = coordinator.db.execute(
+                "SELECT manifest,resource,policy FROM pilot_authorizations WHERE id=?",
+                (request["source_authorization"],)).fetchone()
+            if (approval is None or approval["manifest"] != encode(spec)
+                    or approval["resource"] != request["resource"] or approval["policy"] != request["policy"]):
+                issues.append({"work": work_id, "reason": "pilot_authorization_mismatch"})
+                continue
         events = {"source_observed": set(), "checkpoint": set()}
         for event in coordinator.db.execute(
             "SELECT kind,data FROM events WHERE work=? AND "
