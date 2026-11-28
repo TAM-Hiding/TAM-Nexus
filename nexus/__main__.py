@@ -28,12 +28,53 @@ def _read_arguments(value):
     return result
 
 
+def _reasoning_parser(sub):
+    reason = sub.add_parser("reason", help="operate a bounded reasoning invocation")
+    actions = reason.add_subparsers(dest="reason_action", required=True)
+    start = actions.add_parser("start", help="authorize disclosure of selected handoff evidence")
+    start.add_argument("work", type=int, nargs="+", help="authorized source investigation IDs")
+    start.add_argument("--id", required=True, help="unique command ID, reused for identical retries")
+    start.add_argument("--objective", required=True, help="objective disclosed to the stand-in")
+    for action, help_text in (
+        ("run", "run the fixed deterministic investigator"),
+        ("show", "inspect the invocation and exact proposal"),
+        ("cancel", "fence an unfinished invocation"),
+        ("approve", "approve the exact proposed specification"),
+        ("reject", "reject the exact proposed specification"),
+        ("execute", "check eligibility for experiment execution"),
+    ):
+        item = actions.add_parser(action, help=help_text)
+        item.add_argument("invocation", type=int)
+        if action in ("approve", "reject", "execute"):
+            item.add_argument("digest", help="SHA-256 of the operator-reviewed proposal")
+
+
+def _reasoning_command(coordinator, options):
+    from . import reasoning_service
+
+    action = options.reason_action
+    if action == "start":
+        invocation = reasoning_service.start(coordinator, OPERATOR, options.objective, options.work, options.id)
+        return {"invocation": invocation}
+    if action == "show":
+        return reasoning_service.report(coordinator, OPERATOR, options.invocation)
+    if action == "run":
+        return reasoning_service.run(coordinator, OPERATOR, options.invocation)
+    if action == "cancel":
+        return reasoning_service.cancel(coordinator, OPERATOR, options.invocation)
+    if action == "execute":
+        return reasoning_service.execute(coordinator, OPERATOR, options.invocation, options.digest)
+    return reasoning_service.decide(coordinator, OPERATOR, options.invocation, options.digest,
+                                    approve=action == "approve")
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--state", default=".nexus", help="owner-only state directory")
     parser.add_argument("--runner", choices=("fake", "linux"), default="fake",
                         help="fixture execution profile for run")
     sub = parser.add_subparsers(dest="verb", required=True)
+    _reasoning_parser(sub)
     preflight = sub.add_parser("preflight", help="probe Linux and optional approved dependencies")
     preflight.add_argument("--environment")
     preflight.add_argument("--digest")
@@ -84,7 +125,12 @@ def main(argv=None):
             print(pilot.runtime_digest(options.environment))
             return 0
         runner = LinuxRunner() if options.runner == "linux" else None
-        with Coordinator(options.state, runner=runner, readonly=options.verb == "handoff") as coordinator:
+        readonly = options.verb == "handoff" or (options.verb == "reason" and options.reason_action == "show")
+        with Coordinator(options.state, runner=runner, readonly=readonly) as coordinator:
+            if options.verb == "reason":
+                result = _reasoning_command(coordinator, options)
+                print(json.dumps(result, sort_keys=True))
+                return 2 if options.reason_action == "run" and result["status"] != "completed" else 0
             if options.verb == "command":
                 raw = sys.stdin.read(16385) if options.args == "-" else options.args
                 arguments = _read_arguments(raw)

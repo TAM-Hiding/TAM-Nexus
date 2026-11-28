@@ -49,11 +49,11 @@ class LinuxRunner:
         self.checkpoint_fault = checkpoint_fault
 
     @contextmanager
-    def launch(self, fd, job, *, files=None, pilot=None):
-        payload = json.dumps({
+    def launch(self, fd, job, *, files=None, pilot=None, reasoning_input=None):
+        payload = "" if reasoning_input is not None else json.dumps({
             "phase": job.phase, "mode": job.mode, "candidate": job.candidate,
             "iteration": job.iteration, "base": BASE, "scope": SCOPE,
-        }).encode("ascii")
+        }).encode("ascii").hex()
         supervisor = Path(__file__).with_name("sandbox.py").resolve()
         source_fd = None
         pilot_fds = []
@@ -68,6 +68,13 @@ class LinuxRunner:
                 os.lseek(source_fd, 0, os.SEEK_SET)
             extra = [] if source_fd is None else [str(source_fd)]
             descriptors = (fd,) if source_fd is None else (fd, source_fd)
+            if reasoning_input is not None:
+                source_fd = os.memfd_create("reasoning-input", os.MFD_CLOEXEC)
+                with os.fdopen(os.dup(source_fd), "wb") as stream:
+                    stream.write(reasoning_input)
+                os.lseek(source_fd, 0, os.SEEK_SET)
+                extra = ["reasoning", str(source_fd)]
+                descriptors = (fd, source_fd)
             if pilot:
                 runtime, tree = pilot
                 for directory in (runtime, tree):
@@ -79,7 +86,7 @@ class LinuxRunner:
                 timeout = 15
             process = subprocess.Popen(
                 [sys.executable, "-I", "-S", "-B", supervisor, str(fd), str(timeout),
-                 script.hex(), payload.hex(), *extra],
+                 script.hex(), payload, *extra],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                 close_fds=True, pass_fds=descriptors, cwd="/", env=ENV,
             )
