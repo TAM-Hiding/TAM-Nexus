@@ -678,11 +678,11 @@ class Coordinator:
                                 ("accepted" if result["ok"] else "failed", job.id))
                 return self._linux_response(command, fingerprint, work_id, result)
 
-    def _stage_pilot(self, stack, job, current):
+    def _stage_pilot(self, stack, work_id, current):
         with transaction(self.db, write=False):
             if not current():
                 raise source.SourceError("worker_cancelled")
-            request = self._revision(self._work(job.work))
+            request = self._revision(self._work(work_id))
             environment, pinned = self._pilot_inputs(request)
         root = pilot.stage_root(self.root)
         runtime = stack.enter_context(pilot.staged_runtime(
@@ -701,7 +701,7 @@ class Coordinator:
         staged = None
         if job.mode == "pilot":
             try:
-                request, staged = self._stage_pilot(stack, job, current)
+                request, staged = self._stage_pilot(stack, job.work, current)
             except source.SourceError as exc:
                 return {"status": str(exc)}
             except (OSError, ValueError):
@@ -926,6 +926,11 @@ class Coordinator:
         from .reasoning_service import fence_active
         fence_active(self, "restart_fenced")
         if restore:
+            # A restored copy can predate an execution claim. Its prior grant
+            # must never re-arm a proposal whose observed history was lost.
+            from .reasoning import PERMISSION
+            self.db.execute("UPDATE grants SET revoked=1 WHERE action=? AND revoked=0", (PERMISSION,))
+            self._event("experiment_grants_revoked_on_restore", actor="operator")
             self.db.execute("UPDATE settings SET publication_frozen=1")
             self._event("publication_frozen", actor="operator", reason="possible_missing_intents")
         active = self.db.execute("SELECT work FROM attempts WHERE status='active'").fetchall()
@@ -1203,7 +1208,7 @@ class Coordinator:
     def engineering_handoff(self, principal, works, notes=None):
         self._require(principal is OPERATOR, "operator_required")
         with transaction(self.db, write=False):
-            return handoff.build(self, works, notes)
+            return handoff.build(self, works, notes, include_followups=True)
 
     def report(self, principal, work_id):
         """Redacted export. Free-form conversation is available only through message()."""

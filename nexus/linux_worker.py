@@ -2,6 +2,7 @@
 
 from contextlib import contextmanager
 import fcntl
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -49,8 +50,11 @@ class LinuxRunner:
         self.checkpoint_fault = checkpoint_fault
 
     @contextmanager
-    def launch(self, fd, job, *, files=None, pilot=None, reasoning_input=None):
-        payload = "" if reasoning_input is not None else json.dumps({
+    def launch(self, fd, job, *, files=None, pilot=None, reasoning_input=None, crosscheck=False,
+               crosscheck_sha256=None):
+        if crosscheck and (not pilot or pilot[1] is None or files or reasoning_input is not None):
+            raise ValueError("invalid_crosscheck_profile")
+        payload = "" if reasoning_input is not None or crosscheck else json.dumps({
             "phase": job.phase, "mode": job.mode, "candidate": job.candidate,
             "iteration": job.iteration, "base": BASE, "scope": SCOPE,
         }).encode("ascii").hex()
@@ -80,9 +84,12 @@ class LinuxRunner:
                 for directory in (runtime, tree):
                     if directory is not None:
                         pilot_fds.append(os.open(directory, os.O_DIRECTORY | os.O_NOFOLLOW))
-                extra = ["pilot", str(pilot_fds[0]), str(pilot_fds[1]) if tree is not None else "-"]
+                extra = ["crosscheck" if crosscheck else "pilot", str(pilot_fds[0]), str(pilot_fds[1]) if tree is not None else "-"]
                 descriptors += tuple(pilot_fds)
-                script = Path(__file__).with_name("hero_cad_test.py").read_bytes()
+                script_name = "hero_cad_volume.py" if crosscheck else "hero_cad_test.py"
+                script = Path(__file__).with_name(script_name).read_bytes()
+                if crosscheck and hashlib.sha256(script).hexdigest() != crosscheck_sha256:
+                    raise ValueError("crosscheck_script_digest_mismatch")
                 timeout = 15
             process = subprocess.Popen(
                 [sys.executable, "-I", "-S", "-B", supervisor, str(fd), str(timeout),

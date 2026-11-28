@@ -29,7 +29,7 @@ def _request(c, row):
     policy = c._settings()["policy"]
     if row["policy"] != policy or any(c._revision(c._work(work))["policy"] != policy for work in works):
         raise Rejected("stale_reasoning_policy")
-    request = reasoning.make_input(row["objective"], row["id"], handoff.build(c, works))
+    request = reasoning.make_input(row["objective"], row["id"], handoff.build(c, works, include_followups=False))
     if row["input_digest"] is not None and digest(request) != row["input_digest"]:
         raise Rejected("reasoning_input_changed")
     return request
@@ -77,6 +77,8 @@ def _stop(c, row, reason):
 
 def fence_active(c, reason):
     """Called inside existing operator recovery and policy transactions."""
+    from .experiment_execution import fence_runs
+    fence_runs(c, reason)
     for row in c.db.execute("SELECT * FROM reasoning_invocations WHERE status IN ('issued','running')").fetchall():
         _stop(c, row, reason)
 
@@ -102,6 +104,10 @@ def _accept(c, invocation, output):
                 "input_digest": row["input_digest"], "target_source": target,
                 "permission": ACTION, "request": result["experiment"],
                 "limits": {"max_runs": 1, "wall_seconds": 15, "output_bytes": 8192}}
+        from .experiment_execution import plan_for
+        plan = plan_for(c, row, spec)
+        if plan is not None:
+            spec["execution_plan"] = plan
         key = digest(spec)
         c.db.execute("INSERT INTO experiment_proposals VALUES(?,?,?,'proposed',NULL)",
                      (invocation, encode(spec), key))
@@ -180,12 +186,8 @@ def decide(c, principal, invocation, expected_digest, approve):
 
 def execute(c, principal, invocation, expected_digest):
     _operator(principal)
-    with transaction(c.db, write=False):
-        row = _invocation(c, invocation)
-        proposal = _proposal(c, row, expected_digest)
-        c._require(proposal["state"] == "approved", "experiment_approval_required")
-        c._require(_grant_status(c, row, proposal) == "current", "stale_experiment_approval")
-        raise Rejected("no_compatible_execution_profile")
+    from .experiment_execution import dispatch
+    return dispatch(c, principal, invocation, expected_digest)
 
 
 def _grant_status(c, row, proposal):
@@ -215,10 +217,14 @@ def report(c, principal, invocation):
     with transaction(c.db, write=False):
         row = _invocation(c, invocation)
         p = c._row("SELECT * FROM experiment_proposals WHERE invocation=?", (invocation,))
+        from .experiment_execution import execution_report
+        execution = execution_report(c, invocation)
+        supported = p is not None and "execution_plan" in json.loads(p["spec"])
         return {"invocation": invocation, "status": row["status"], "reason": row["reason"],
                 "origin": row["origin"], "input_digest": row["input_digest"],
                 "reasoning": json.loads(row["output"]) if row["output"] else None,
                 "classification": "unverified_reasoning", "proposal": json.loads(p["spec"]) if p else None,
                 "proposal_digest": p["digest"] if p else None, "proposal_state": p["state"] if p else None,
                 "grant_status": _grant_status(c, row, p),
-                "grant": p["grant_id"] if p else None, "execution_support": "no_compatible_execution_profile"}
+                "grant": p["grant_id"] if p else None, "execution": execution,
+                "execution_support": reasoning.PROFILE if supported else "no_compatible_execution_profile"}

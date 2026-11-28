@@ -139,7 +139,7 @@ def _acceptance_packet(coordinator, work):
     return packet
 
 
-def build(coordinator, works, notes=None):
+def build(coordinator, works, notes=None, *, include_followups=False):
     """Build from one read transaction. Supplied prose has no observation path."""
     if (not isinstance(works, list) or not 1 <= len(works) <= MAX_WORKS
             or any(not _id(work) for work in works) or len(set(works)) != len(works)):
@@ -226,10 +226,44 @@ def build(coordinator, works, notes=None):
 
     hypotheses, recommendations = _notes(notes if notes is not None else
                                          {"hypotheses": [], "recommendations": []}, available)
-    return {"schema": SCHEMA, "version": 1, "investigations": subjects, "observations": observations,
+    record = {"schema": SCHEMA, "version": 1, "investigations": subjects, "observations": observations,
             "evidence_issues": issues, "hypotheses": hypotheses, "recommendations": recommendations,
             "notes_provenance": "operator_supplied_unverified" if notes is not None else None,
             "authority": "informational_only"}
+    if include_followups:
+        from . import experiment_evidence
+
+        followups = []
+        for work in works:
+            rows = coordinator.db.execute(
+                "SELECT e.* FROM experiment_runs e JOIN reasoning_invocations i ON i.id=e.invocation "
+                "WHERE i.origin=? ORDER BY e.id", (work,))
+            recorded = set()
+            for row in rows:
+                recorded.add((row["invocation"], row["id"]))
+                if row["status"] != "accepted":
+                    issues.append({"work": work, "experiment_attempt": row["id"],
+                                   "reason": "experiment_" + row["status"]})
+                    continue
+                try:
+                    observation = experiment_evidence.verify(coordinator, row)
+                except HandoffError as exc:
+                    issues.append({"work": work, "experiment_attempt": row["id"], "reason": str(exc)})
+                    continue
+                # Selecting a single investigation must not export references to unselected peers.
+                observation["evidence_references"] = [ref for ref in observation["evidence_references"]
+                                                      if ref["work"] in works]
+                followups.append(observation)
+            for event in coordinator.db.execute(
+                "SELECT data FROM events WHERE work=? AND kind='experiment_accepted' AND actor='coordinator'",
+                (work,),
+            ):
+                data = json.loads(event["data"])
+                if (data.get("invocation"), data.get("attempt")) not in recorded:
+                    issues.append({"work": work, "reason": "experiment_acceptance_without_run"})
+        if followups:
+            record["followup_observations"] = followups
+    return record
 
 
 def render(record):
@@ -238,6 +272,7 @@ def render(record):
              "Observations and authorized scope", ""]
     sections = (
         ("Investigation", record["investigations"]), ("Observed test", record["observations"]),
+        ("Approved follow-up", record.get("followup_observations", [])),
         ("Evidence issue", record["evidence_issues"]),
         ("Hypothesis · unverified", record["hypotheses"]),
         ("Recommendation · approval not granted", record["recommendations"]),

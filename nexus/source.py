@@ -148,8 +148,10 @@ def snapshot_digest(files):
     return digest({name: hashlib.sha256(data).hexdigest() for name, data in files.items()})
 
 
-def capture(observed, request, job):
-    """Validate trusted supervisor metadata without interpreting test text."""
+def process_observation(observed):
+    """Validate and fingerprint bounded streams from the trusted Linux supervisor."""
+    if not isinstance(observed, dict):
+        raise SourceError("invalid_test_observation")
     status = observed.get("status")
     if status not in ("test_exited", "worker_timeout", "worker_output_oversized"):
         raise SourceError("invalid_test_observation")
@@ -181,6 +183,15 @@ def capture(observed, request, job):
     if exit_code == 1 and missing_reported:
         outcome = "dependency_reported_missing"
         limitations.append("The import error is test-reported and unverified.")
+    return {"status": status, "exit_status": exit_code, "elapsed_ms": elapsed, "outcome": outcome,
+            "provenance": "supervisor_process_observation", "observations": summary, "streams": streams,
+            "limitations": limitations}
+
+
+def capture(observed, request, job):
+    """Attach the observed process result to one authorized source investigation."""
+    result = process_observation(observed)
+    exit_code = result["exit_status"]
     extra = {}
     if "manifest" in request:
         manifest = request["manifest"]
@@ -190,19 +201,16 @@ def capture(observed, request, job):
         extra = {"manifest_digest": digest(manifest), "repository": manifest["repository"],
                  "dependency_digest": manifest["dependency_digest"], "source_unchanged": unchanged}
         if not unchanged:
-            outcome = "source_changed_during_run"
+            result["outcome"] = "source_changed_during_run"
         elif exit_code == 78:
-            outcome = "dependency_unavailable"
+            result["outcome"] = "dependency_unavailable"
         elif exit_code in (2, 3, 4, 5, 79, 126, 127):
-            outcome = "test_infrastructure_failure"
+            result["outcome"] = "test_infrastructure_failure"
     return {
         **extra, "kind": "source_test_capture", "resource": request["resource"], "base": request["base"],
         "snapshot": request["snapshot"], "scope": request["scope"],
         "command": request.get("manifest", {}).get("profile", PROFILE),
         "sandbox": SANDBOX_PROFILE, "worker": job.worker, "attempt": job.id,
         "authorization": request["source_authorization"], "revision": job.revision,
-        "status": status, "exit_status": exit_code, "elapsed_ms": elapsed,
-        "outcome": outcome, "provenance": "supervisor_process_observation",
-        "observations": summary, "streams": streams,
-        "limitations": limitations,
+        **result,
     }

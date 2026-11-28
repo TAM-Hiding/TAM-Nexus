@@ -240,14 +240,16 @@ print("mounts verified")
 """
         fds = [os.open(path, os.O_DIRECTORY) for path in (runtime, tree)]
         try:
-            with control_pipe() as control:
-                result = sandbox.supervise(script.encode(), b"", 3, control, pilot=(*fds, False))
+            for crosscheck in (False, True):
+                with self.subTest(crosscheck=crosscheck), control_pipe() as control:
+                    result = sandbox.supervise(script.encode(), b"", 3, control,
+                                               pilot=(*fds, False), crosscheck=crosscheck)
+                    self.assertEqual(result["status"], "test_exited", result)
+                    self.assertEqual(result["exit"], 0, base64.b64decode(result["streams"]["stderr"]))
+                    self.assertIn(b"mounts verified", base64.b64decode(result["streams"]["stdout"]))
         finally:
             for fd in fds:
                 os.close(fd)
-        self.assertEqual(result["status"], "test_exited", result)
-        self.assertEqual(result["exit"], 0, base64.b64decode(result["streams"]["stderr"]))
-        self.assertIn(b"mounts verified", base64.b64decode(result["streams"]["stdout"]))
 
 
 if __name__ == "__main__":

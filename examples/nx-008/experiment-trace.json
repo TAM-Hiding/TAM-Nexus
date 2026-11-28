@@ -1,0 +1,350 @@
+{
+  "altered_proposal_digest": {
+    "ok": false,
+    "reason": "proposal_digest_mismatch"
+  },
+  "baseline_and_control_checkouts_clean_after_run": true,
+  "before_approval": {
+    "ok": false,
+    "reason": "experiment_approval_required"
+  },
+  "coordinator_proposal": {
+    "execution_plan": {
+      "argv": [
+        "/runtime/bin/python3",
+        "-I",
+        "-S",
+        "-B",
+        "/input/hero_cad_volume.py"
+      ],
+      "dependency_sha256": "d3386f3f11e2d75f3c3ebdfd5b4a9af65cfe51943232ae30d2cb45a466edcba0",
+      "limits": {
+        "address_space_bytes": 2147483648,
+        "cpu_seconds": 12,
+        "output_bytes": 8192,
+        "processes": 64,
+        "scratch_bytes": 4194304,
+        "wall_seconds": 15
+      },
+      "manifest_sha256": "28b11604fec5448fbef2795d02444669e9cd8bf834fd92a9ac15ce29258dd9ab",
+      "profile": "hero-cad-volume-crosscheck-v1",
+      "resource": "e105deeee4de79e1a0d7c0234c236f2420f6a4e569703b42d0961c65497f7ed1",
+      "script_sha256": "06e237cb826fa61af9b5889497b886a3b0be7327754bcc1ed1aeb89c52ac4f0f",
+      "source_revision": "b053d529c8cd32d07c5d37d060372b8bb0d85741",
+      "source_sha256": "9021d107d0c3fe570c6ec50d6873ed5355076d960cd9c8cabb1d270b950dc87b",
+      "version": 1
+    },
+    "input_digest": "021c62bb824731b009278f994002696fb714ed259acc8e3f97bf30ed66ee3be9",
+    "invocation": 1,
+    "limits": {
+      "max_runs": 1,
+      "output_bytes": 8192,
+      "wall_seconds": 15
+    },
+    "origin": 1,
+    "permission": "approve_read_only_experiment",
+    "request": {
+      "evidence": [
+        {
+          "attempt": 1,
+          "sha256": "ed1d9a20d5203613933924d73efcbcd720c8790ed8a4e8f573b1b2dfc50a7ff9",
+          "work": 1
+        },
+        {
+          "attempt": 2,
+          "sha256": "5d800e0f7d4d91e18ae0cef448e5048dfed0f452e84d04ef80fb9c76c67691c2",
+          "work": 2
+        }
+      ],
+      "profile": "hero-cad-volume-crosscheck-v1",
+      "purpose": "Independently measure volume for the pinned baseline box.",
+      "target": 1,
+      "value": "Establish a reference measurement independent of the reported volume calculation."
+    },
+    "target_source": {
+      "acceptance_packet_sha256": "d738863abecbf37e0b99bb5e3fba9b945fe7d86298b9438d5a9e51f577bc06d5",
+      "approved_scope": [
+        "read_pinned_source",
+        "hero-cad-box-v1"
+      ],
+      "authorization": 1,
+      "dependency_sha256": "d3386f3f11e2d75f3c3ebdfd5b4a9af65cfe51943232ae30d2cb45a466edcba0",
+      "execution_profile": "hero-cad-box-v1",
+      "manifest_sha256": "28b11604fec5448fbef2795d02444669e9cd8bf834fd92a9ac15ce29258dd9ab",
+      "repository": "TAM-Hiding/hero-cad",
+      "snapshot_sha256": "9021d107d0c3fe570c6ec50d6873ed5355076d960cd9c8cabb1d270b950dc87b",
+      "source_identity": "e105deeee4de79e1a0d7c0234c236f2420f6a4e569703b42d0961c65497f7ed1",
+      "source_revision": "b053d529c8cd32d07c5d37d060372b8bb0d85741",
+      "state": "awaiting_acceptance",
+      "work": 1,
+      "work_revision": "bf339c5ed1d8d52134dad6b5fa1b34460c775f4a6f31da2cce2b075f0423a15d"
+    },
+    "version": 1,
+    "worker": "deterministic-investigator-v1"
+  },
+  "event_sequence": [
+    "experiment_proposed",
+    "experiment_decision",
+    "experiment_claimed",
+    "experiment_launched",
+    "experiment_accepted"
+  ],
+  "execution": {
+    "artifact": "c05eedf32c3a4e0d99a61a34f6547b9012fbfc413737774c162af5db5d1a0e13",
+    "attempt": 1,
+    "evidence": {
+      "attempt": 1,
+      "evidence_references": [
+        {
+          "attempt": 1,
+          "sha256": "ed1d9a20d5203613933924d73efcbcd720c8790ed8a4e8f573b1b2dfc50a7ff9",
+          "work": 1
+        },
+        {
+          "attempt": 2,
+          "sha256": "5d800e0f7d4d91e18ae0cef448e5048dfed0f452e84d04ef80fb9c76c67691c2",
+          "work": 2
+        }
+      ],
+      "execution_plan": {
+        "argv": [
+          "/runtime/bin/python3",
+          "-I",
+          "-S",
+          "-B",
+          "/input/hero_cad_volume.py"
+        ],
+        "dependency_sha256": "d3386f3f11e2d75f3c3ebdfd5b4a9af65cfe51943232ae30d2cb45a466edcba0",
+        "limits": {
+          "address_space_bytes": 2147483648,
+          "cpu_seconds": 12,
+          "output_bytes": 8192,
+          "processes": 64,
+          "scratch_bytes": 4194304,
+          "wall_seconds": 15
+        },
+        "manifest_sha256": "28b11604fec5448fbef2795d02444669e9cd8bf834fd92a9ac15ce29258dd9ab",
+        "profile": "hero-cad-volume-crosscheck-v1",
+        "resource": "e105deeee4de79e1a0d7c0234c236f2420f6a4e569703b42d0961c65497f7ed1",
+        "script_sha256": "06e237cb826fa61af9b5889497b886a3b0be7327754bcc1ed1aeb89c52ac4f0f",
+        "source_revision": "b053d529c8cd32d07c5d37d060372b8bb0d85741",
+        "source_sha256": "9021d107d0c3fe570c6ec50d6873ed5355076d960cd9c8cabb1d270b950dc87b",
+        "version": 1
+      },
+      "grant": 1,
+      "invocation": 1,
+      "origin": 1,
+      "process": {
+        "elapsed_ms": 1580,
+        "exit_status": 0,
+        "limitations": [
+          "Output is controlled by the test process.",
+          "The supervisor observes process exit, not the truth of test assertions."
+        ],
+        "observations": {
+          "stderr": {
+            "bytes": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "stdout": {
+            "bytes": 101,
+            "sha256": "934ac706bae8b523b34570b257a223a9386177eef66e35dc55551ea20b996a0a"
+          }
+        },
+        "outcome": "command_passed",
+        "provenance": "supervisor_process_observation",
+        "source_unchanged": true,
+        "status": "test_exited"
+      },
+      "proposal_digest": "e004e99f83f545f26581c00812e27345d86339fda1d2d27676f132d7f7cef786",
+      "reference": {
+        "attempt": 1,
+        "invocation": 1,
+        "sha256": "c05eedf32c3a4e0d99a61a34f6547b9012fbfc413737774c162af5db5d1a0e13"
+      },
+      "sandbox": "nx-003-bubblewrap",
+      "schema": "nexus.experiment-capture",
+      "version": 1,
+      "worker_result": {
+        "measurement": {
+          "expected_mm3": 10009.36984944,
+          "mesh_mm3": 10009.36984944,
+          "method": "oriented_triangle_tetrahedra",
+          "reported_mm3": 10009.369849439998
+        },
+        "outcome": "volumes_agree",
+        "provenance": "worker_report_unverified"
+      }
+    },
+    "reason": null,
+    "status": "accepted"
+  },
+  "execution_replay": {
+    "artifact": "c05eedf32c3a4e0d99a61a34f6547b9012fbfc413737774c162af5db5d1a0e13",
+    "attempt": 1,
+    "evidence": {
+      "attempt": 1,
+      "evidence_references": [
+        {
+          "attempt": 1,
+          "sha256": "ed1d9a20d5203613933924d73efcbcd720c8790ed8a4e8f573b1b2dfc50a7ff9",
+          "work": 1
+        },
+        {
+          "attempt": 2,
+          "sha256": "5d800e0f7d4d91e18ae0cef448e5048dfed0f452e84d04ef80fb9c76c67691c2",
+          "work": 2
+        }
+      ],
+      "execution_plan": {
+        "argv": [
+          "/runtime/bin/python3",
+          "-I",
+          "-S",
+          "-B",
+          "/input/hero_cad_volume.py"
+        ],
+        "dependency_sha256": "d3386f3f11e2d75f3c3ebdfd5b4a9af65cfe51943232ae30d2cb45a466edcba0",
+        "limits": {
+          "address_space_bytes": 2147483648,
+          "cpu_seconds": 12,
+          "output_bytes": 8192,
+          "processes": 64,
+          "scratch_bytes": 4194304,
+          "wall_seconds": 15
+        },
+        "manifest_sha256": "28b11604fec5448fbef2795d02444669e9cd8bf834fd92a9ac15ce29258dd9ab",
+        "profile": "hero-cad-volume-crosscheck-v1",
+        "resource": "e105deeee4de79e1a0d7c0234c236f2420f6a4e569703b42d0961c65497f7ed1",
+        "script_sha256": "06e237cb826fa61af9b5889497b886a3b0be7327754bcc1ed1aeb89c52ac4f0f",
+        "source_revision": "b053d529c8cd32d07c5d37d060372b8bb0d85741",
+        "source_sha256": "9021d107d0c3fe570c6ec50d6873ed5355076d960cd9c8cabb1d270b950dc87b",
+        "version": 1
+      },
+      "grant": 1,
+      "invocation": 1,
+      "origin": 1,
+      "process": {
+        "elapsed_ms": 1580,
+        "exit_status": 0,
+        "limitations": [
+          "Output is controlled by the test process.",
+          "The supervisor observes process exit, not the truth of test assertions."
+        ],
+        "observations": {
+          "stderr": {
+            "bytes": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "stdout": {
+            "bytes": 101,
+            "sha256": "934ac706bae8b523b34570b257a223a9386177eef66e35dc55551ea20b996a0a"
+          }
+        },
+        "outcome": "command_passed",
+        "provenance": "supervisor_process_observation",
+        "source_unchanged": true,
+        "status": "test_exited"
+      },
+      "proposal_digest": "e004e99f83f545f26581c00812e27345d86339fda1d2d27676f132d7f7cef786",
+      "reference": {
+        "attempt": 1,
+        "invocation": 1,
+        "sha256": "c05eedf32c3a4e0d99a61a34f6547b9012fbfc413737774c162af5db5d1a0e13"
+      },
+      "sandbox": "nx-003-bubblewrap",
+      "schema": "nexus.experiment-capture",
+      "version": 1,
+      "worker_result": {
+        "measurement": {
+          "expected_mm3": 10009.36984944,
+          "mesh_mm3": 10009.36984944,
+          "method": "oriented_triangle_tetrahedra",
+          "reported_mm3": 10009.369849439998
+        },
+        "outcome": "volumes_agree",
+        "provenance": "worker_report_unverified"
+      }
+    },
+    "reason": null,
+    "status": "accepted"
+  },
+  "final_record_counts": {
+    "experiment_proposals": 1,
+    "experiment_runs": 1,
+    "reasoning_invocations": 1
+  },
+  "initial_observation_refs": [
+    {
+      "attempt": 1,
+      "sha256": "ed1d9a20d5203613933924d73efcbcd720c8790ed8a4e8f573b1b2dfc50a7ff9",
+      "work": 1
+    },
+    {
+      "attempt": 2,
+      "sha256": "5d800e0f7d4d91e18ae0cef448e5048dfed0f452e84d04ef80fb9c76c67691c2",
+      "work": 2
+    }
+  ],
+  "negative_control_test_output_summary": {
+    "expected_mm3": 10009.36984944,
+    "reference": {
+      "attempt": 2,
+      "sha256": "5d800e0f7d4d91e18ae0cef448e5048dfed0f452e84d04ef80fb9c76c67691c2",
+      "work": 2
+    },
+    "reported_mm3": 5004.684924719999,
+    "source": "Untrusted original test assertion output from the disposable control"
+  },
+  "objective": "Compare the pinned box baseline with its disposable negative control.",
+  "operator_decision": {
+    "grant": 1,
+    "grant_status_at_approval": "current",
+    "proposal_state": "approved"
+  },
+  "proposal_digest": "e004e99f83f545f26581c00812e27345d86339fda1d2d27676f132d7f7cef786",
+  "runtime_sha256_after_run": "d3386f3f11e2d75f3c3ebdfd5b4a9af65cfe51943232ae30d2cb45a466edcba0",
+  "validated_unverified_reasoning": {
+    "experiment": {
+      "evidence": [
+        {
+          "attempt": 1,
+          "sha256": "ed1d9a20d5203613933924d73efcbcd720c8790ed8a4e8f573b1b2dfc50a7ff9",
+          "work": 1
+        },
+        {
+          "attempt": 2,
+          "sha256": "5d800e0f7d4d91e18ae0cef448e5048dfed0f452e84d04ef80fb9c76c67691c2",
+          "work": 2
+        }
+      ],
+      "profile": "hero-cad-volume-crosscheck-v1",
+      "purpose": "Independently measure volume for the pinned baseline box.",
+      "target": 1,
+      "value": "Establish a reference measurement independent of the reported volume calculation."
+    },
+    "hypotheses": [
+      {
+        "contradictory": [],
+        "explanation": "The deliberately modified disposable control may halve the reported box volume.",
+        "supporting": [
+          {
+            "attempt": 1,
+            "sha256": "ed1d9a20d5203613933924d73efcbcd720c8790ed8a4e8f573b1b2dfc50a7ff9",
+            "work": 1
+          },
+          {
+            "attempt": 2,
+            "sha256": "5d800e0f7d4d91e18ae0cef448e5048dfed0f452e84d04ef80fb9c76c67691c2",
+            "work": 2
+          }
+        ],
+        "uncertainty": "The baseline passed and the control failed. Exit status alone cannot identify the failing calculation.",
+        "verification": "Compare an independent geometric volume measurement with the reported volume."
+      }
+    ],
+    "invocation": 1,
+    "schema": "nexus.reasoning-output",
+    "version": 1
+  }
+}

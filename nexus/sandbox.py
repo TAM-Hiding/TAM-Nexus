@@ -95,7 +95,7 @@ def _filter(fd):
         lib.seccomp_release(ctx)
 
 
-def _command(python, stdlib, mounts, filter_fd, status_fd, source, pilot=None):
+def _command(python, stdlib, mounts, filter_fd, status_fd, source, pilot=None, crosscheck=False):
     args = [
         PRLIMIT, "--as=268435456:268435456", "--cpu=3:3", "--nproc=64:64",
         "--nofile=64:64", "--core=0:0", "--fsize=4194304:4194304", "--",
@@ -127,7 +127,8 @@ def _command(python, stdlib, mounts, filter_fd, status_fd, source, pilot=None):
     if pilot:
         args.extend(("--setenv", "TMPDIR", "/scratch", "--setenv", "LD_LIBRARY_PATH",
                      "/runtime/lib:/runtime/native",
-                     "--", "/runtime/bin/python3", "-I", "-S", "-B", "/input/hero_cad_test.py"))
+                     "--", "/runtime/bin/python3", "-I", "-S", "-B",
+                     "/input/hero_cad_volume.py" if crosscheck else "/input/hero_cad_test.py"))
         if preflight:
             args.append("preflight")
         return args
@@ -279,11 +280,15 @@ def _parse_output(output):
     return value
 
 
-def supervise(script, fixture, timeout, control, *, files=None, pilot=None):
+def supervise(script, fixture, timeout, control, *, files=None, pilot=None, crosscheck=False):
     with ExitStack() as stack:
         try:
             python, stdlib = require_host()
-            if pilot:
+            if crosscheck:
+                if not pilot or pilot[1] is None or pilot[2]:
+                    raise SandboxUnavailable("invalid_crosscheck_profile")
+                inputs = {"/input/hero_cad_volume.py": script}
+            elif pilot:
                 inputs = {"/input/hero_cad_test.py": script, "/input/pytest.ini": b"[pytest]\n"}
             elif files is None:
                 inputs = {"/input/worker.py": script, "/input/job.json": fixture}
@@ -301,7 +306,7 @@ def supervise(script, fixture, timeout, control, *, files=None, pilot=None):
             pilot_fds = tuple(fd for fd in pilot[:2] if fd is not None) if pilot else ()
             try:
                 process = subprocess.Popen(
-                    _command(python, stdlib, mounts, filter_fd, status_write, files is not None, pilot),
+                    _command(python, stdlib, mounts, filter_fd, status_write, files is not None, pilot, crosscheck),
                     stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE if capture_streams else subprocess.DEVNULL,
                     close_fds=True, pass_fds=(*[fd for _, fd in mounts], filter_fd, status_write, *pilot_fds),
                     cwd="/", env=ENV,
@@ -332,7 +337,7 @@ if __name__ == "__main__":
                 payload = stream.read(65537)
             if len(payload) > 65536:
                 raise SandboxUnavailable("reasoning_input_oversized")
-        elif source and source[0] == "pilot":
+        elif source and source[0] in ("pilot", "crosscheck"):
             pilot = (int(source[1]), None if source[2] == "-" else int(source[2]), source[2] == "-")
         elif source:
             with os.fdopen(int(source[0]), "rb") as stream:
@@ -340,7 +345,8 @@ if __name__ == "__main__":
             if len(serialized) > 74000:
                 raise SandboxUnavailable("source_manifest_mismatch")
             files = {key: bytes.fromhex(value) for key, value in json.loads(serialized).items()}
-        result = supervise(bytes.fromhex(script), payload, float(timeout), 0, files=files, pilot=pilot)
+        result = supervise(bytes.fromhex(script), payload, float(timeout), 0, files=files, pilot=pilot,
+                           crosscheck=bool(source and source[0] == "crosscheck"))
         print(json.dumps(result, ensure_ascii=True, allow_nan=False))
     finally:
         os.close(int(lock_fd))
