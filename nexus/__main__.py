@@ -5,7 +5,7 @@ import json
 import sqlite3
 import sys
 
-from . import pilot, source
+from . import handoff, pilot, source
 from .coordinator import OPERATOR, Coordinator, Rejected, render_report
 from .linux_worker import LinuxRunner
 from .storage import EvidenceError, InjectedCrash
@@ -37,6 +37,8 @@ def main(argv=None):
     preflight = sub.add_parser("preflight", help="probe Linux and optional approved dependencies")
     preflight.add_argument("--environment")
     preflight.add_argument("--digest")
+    preflight.add_argument("--manifest", help="use the approved manifest's dependency fingerprint")
+    preflight.add_argument("--staging-directory", help="probe an existing staging filesystem directory")
     manifest = sub.add_parser("pilot-manifest", help="fingerprint a pinned git archive from stdin")
     manifest.add_argument("revision")
     manifest.add_argument("dependency_digest")
@@ -49,6 +51,10 @@ def main(argv=None):
     command.add_argument("--version", type=int)
     command.add_argument("--manifest", help="read an approved pilot JSON manifest")
     command.add_argument("--args", default="{}", help="JSON action arguments, or - for stdin")
+    export = sub.add_parser("handoff", help="export a versioned engineering handoff")
+    export.add_argument("work", type=int, nargs="+")
+    export.add_argument("--notes", help="add hypotheses and recommendations from bounded JSON")
+    export.add_argument("--json", action="store_true")
     report = sub.add_parser("report", help="read a redacted report")
     report.add_argument("work", type=int)
     report.add_argument("--json", action="store_true")
@@ -61,9 +67,13 @@ def main(argv=None):
 
     try:
         if options.verb == "preflight":
-            if bool(options.environment) != bool(options.digest):
-                parser.error("preflight requires both --environment and --digest")
-            result = pilot.preflight(options.environment, options.digest)
+            if options.manifest and options.digest:
+                parser.error("preflight takes either --manifest or --digest")
+            expected = (pilot.load_manifest(options.manifest)["dependency_digest"]
+                        if options.manifest else options.digest)
+            if bool(options.environment) != bool(expected):
+                parser.error("preflight requires --environment and either --manifest or --digest")
+            result = pilot.preflight(options.environment, expected, staging_directory=options.staging_directory)
             print(json.dumps(result, indent=2, sort_keys=True))
             return 0 if result["ok"] else 2
         if options.verb == "pilot-manifest":
@@ -74,7 +84,7 @@ def main(argv=None):
             print(pilot.runtime_digest(options.environment))
             return 0
         runner = LinuxRunner() if options.runner == "linux" else None
-        with Coordinator(options.state, runner=runner) as coordinator:
+        with Coordinator(options.state, runner=runner, readonly=options.verb == "handoff") as coordinator:
             if options.verb == "command":
                 raw = sys.stdin.read(16385) if options.args == "-" else options.args
                 arguments = _read_arguments(raw)
@@ -86,6 +96,14 @@ def main(argv=None):
                                              version=options.version, **arguments)
                 print(json.dumps(result, sort_keys=True))
                 return 0 if result["ok"] else 2
+            if options.verb == "handoff":
+                notes = None
+                if options.notes:
+                    with open(options.notes, encoding="utf-8") as stream:
+                        notes = _read_arguments(stream.read(16385))
+                result = coordinator.engineering_handoff(OPERATOR, options.work, notes)
+                print(json.dumps(result, indent=2, sort_keys=True) if options.json else handoff.render(result))
+                return 2 if result["evidence_issues"] else 0
             if options.verb == "report":
                 result = coordinator.report(OPERATOR, options.work)
                 print(json.dumps(result, indent=2, sort_keys=True) if options.json else render_report(result))

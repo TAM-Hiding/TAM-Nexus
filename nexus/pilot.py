@@ -10,6 +10,7 @@ import re
 import shutil
 import stat
 import subprocess
+import sys
 import tarfile
 import time
 from tempfile import TemporaryDirectory
@@ -214,11 +215,13 @@ def stage_root(root):
     return stage
 
 
-def preflight(environment=None, expected=None):
+def preflight(environment=None, expected=None, *, staging_directory=None):
     """Probe the actual sandbox without opening the coordinator database."""
     from . import sandbox
 
-    checks = {}
+    checks = {"coordinator_python": ".".join(map(str, sys.version_info[:3]))}
+    if sys.version_info < (3, 11):
+        return {"ok": False, "checks": checks, "hint": "Run the coordinator with Python 3.11 or later."}
     try:
         python, _ = sandbox.require_host()
         checks["host"] = {"status": "ok", "system_python": python.name}
@@ -240,7 +243,11 @@ def preflight(environment=None, expected=None):
     checks["bubblewrap"] = "ok"
     control, writer = os.pipe()
     try:
-        with TemporaryDirectory(prefix="nexus-preflight-") as temporary:
+        if staging_directory is not None:
+            location = source.canonical(staging_directory)
+            with source.directory(None, location[1:].split("/")):
+                pass
+        with TemporaryDirectory(prefix="nexus-preflight-", dir=staging_directory) as temporary:
             root = Path(temporary)
             (root / "probe").write_bytes(b"")
             probe = sandbox.supervise(
@@ -251,6 +258,7 @@ def preflight(environment=None, expected=None):
                 return {"ok": False, "checks": checks,
                         "hint": "Check required Bubblewrap flags, namespaces and seccomp. Use strict NX-003 tests for detail."}
             checks["temporary_storage"] = "ok"
+            checks["staging_free_bytes"] = shutil.disk_usage(root).free
             if environment is None or expected is None:
                 checks["dependencies"] = "not_checked"
                 return {"ok": True, "ready_for_hero_cad": False, "checks": checks}
@@ -267,6 +275,7 @@ def preflight(environment=None, expected=None):
             if result.get("status") != "test_exited" or result.get("exit") != 0:
                 checks["dependencies"] = ("dependency_unavailable" if result.get("exit") == 78
                                           else result["status"] + "_dependency_probe")
+                checks["dependency_probe_exit"] = result.get("exit")
                 return {"ok": False, "checks": checks,
                         "hint": "Check the provisioned CPython 3.12, native libraries and pinned wheels."}
             checks["dependencies"] = "ok"

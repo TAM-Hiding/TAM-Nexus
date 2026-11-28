@@ -1,0 +1,82 @@
+Engineering investigation handoff v1
+
+Observations and authorized scope
+
+Investigation
+  work  1
+  work revision  e5a0ee55d203825f1e43f5f0a2887dbc2e4390e1264ef29f0d3d61bef16fc0ac
+  state  awaiting_acceptance
+  authorization  1
+  approved scope  ["read_pinned_source", "hero-cad-box-v1"]
+  repository  TAM-Hiding/hero-cad
+  source revision  b053d529c8cd32d07c5d37d060372b8bb0d85741
+  source identity  e105deeee4de79e1a0d7c0234c236f2420f6a4e569703b42d0961c65497f7ed1
+  snapshot sha256  9021d107d0c3fe570c6ec50d6873ed5355076d960cd9c8cabb1d270b950dc87b
+  manifest sha256  28b11604fec5448fbef2795d02444669e9cd8bf834fd92a9ac15ce29258dd9ab
+  execution profile  hero-cad-box-v1
+  dependency sha256  d3386f3f11e2d75f3c3ebdfd5b4a9af65cfe51943232ae30d2cb45a466edcba0
+  acceptance packet sha256  fd08c21cbbf11029434595493463bfacbefc0cada053885d602c55afe6074748
+
+Investigation
+  work  2
+  work revision  22627888954b926764b9e0f0b1d98cdd92fc18c501ff926315d93df6a1cf4be6
+  state  awaiting_acceptance
+  authorization  2
+  approved scope  ["read_pinned_source", "hero-cad-box-v1"]
+  repository  TAM-Hiding/hero-cad
+  source revision  ff43cdd9ab36c24aa1ae4ff3cb42f7e35782bdea
+  source identity  f3a1d1e14040534d5791a08c1db61f3bbbfec8d524b3e5932370308713a48865
+  snapshot sha256  dd2ccb8df91403928bb5cae6a1036414c962f6780f441b6c4e14c556aae35e4e
+  manifest sha256  a09f9f41ed6ecfdcaf551b9085502d4a1e919e1e29c3fbcca43ebf2d025dab2a
+  execution profile  hero-cad-box-v1
+  dependency sha256  d3386f3f11e2d75f3c3ebdfd5b4a9af65cfe51943232ae30d2cb45a466edcba0
+  acceptance packet sha256  91eef0c69e58a2bc945fd843d4e32bc36f19e6adc933e52f159891d20757e111
+
+Observed test
+  reference  {"work": 1, "attempt": 1, "sha256": "e5855de4f2593c1aa7158bccc6d5adab0a796200dd3d7ba9ac0a28718aa19d45"}
+  provenance  supervisor_process_observation
+  test  tests/test_document.py::test_box_regenerates_exact_solid
+  worker  investigator
+  sandbox  nx-003-bubblewrap
+  host platform  {"architecture": "x86_64", "coordinator_python": "3.12.14", "kernel": "6.18.57"}
+  status  test_exited
+  exit status  0
+  elapsed ms  1912
+  outcome  command_passed
+  source unchanged  true
+  stream fingerprints  {"stderr": {"bytes": 60, "sha256": "ab9019e334f0288b6eb3777e0c5f2bd69d13b0810a271d3d08d0bb22b6d03d9b"}, "stdout": {"bytes": 20, "sha256": "eb998a08ea822018c23426dbaa1733ee4c9f32d3f9180db9d43619391c8c5f12"}}
+  limitations  ["Output is controlled by the test process.", "The supervisor observes process exit, not the truth of test assertions."]
+
+Observed test
+  reference  {"work": 2, "attempt": 2, "sha256": "93bca9c69a77d77224149317d130eb6f591b4dd4f3e3baf950b955321bfe8494"}
+  provenance  supervisor_process_observation
+  test  tests/test_document.py::test_box_regenerates_exact_solid
+  worker  investigator
+  sandbox  nx-003-bubblewrap
+  host platform  {"architecture": "x86_64", "coordinator_python": "3.12.14", "kernel": "6.18.57"}
+  status  test_exited
+  exit status  1
+  elapsed ms  2985
+  outcome  command_exit_one
+  source unchanged  true
+  stream fingerprints  {"stderr": {"bytes": 60, "sha256": "ab9019e334f0288b6eb3777e0c5f2bd69d13b0810a271d3d08d0bb22b6d03d9b"}, "stdout": {"bytes": 958, "sha256": "32f16c48adeb97f171844c013c2cd0188c8155d5d4bf6967d396d794725528a6"}}
+  limitations  ["Output is controlled by the test process.", "The supervisor observes process exit, not the truth of test assertions."]
+
+Hypothesis · unverified
+  explanation  The scoped regression can detect volume-only errors without a GUI session.
+  supporting  [{"attempt": 1, "sha256": "e5855de4f2593c1aa7158bccc6d5adab0a796200dd3d7ba9ac0a28718aa19d45", "work": 1}, {"attempt": 2, "sha256": "93bca9c69a77d77224149317d130eb6f591b4dd4f3e3baf950b955321bfe8494", "work": 2}]
+  contradictory  []
+  uncertainty  The negative control deliberately changed the volume helper. Similar output on a production defect could have a different cause.
+  verification  Use the same approved profile on a known real volume discrepancy and verify the assertion location in the private capture.
+
+Recommendation · approval not granted
+  action  request_experiment
+  proposal  Repeat the positive baseline and local volume-control comparison on the intended workstation.
+  permissions  ["approve_read_only_experiment"]
+  evidence  [{"attempt": 1, "sha256": "e5855de4f2593c1aa7158bccc6d5adab0a796200dd3d7ba9ac0a28718aa19d45", "work": 1}, {"attempt": 2, "sha256": "93bca9c69a77d77224149317d130eb6f591b4dd4f3e3baf950b955321bfe8494", "work": 2}]
+  value  Check consistent pass and fail behavior across workstation provisioning.
+  risks  A setup failure or missing native dependency can prevent the comparison.
+  dependencies  Compatible Linux sandbox, approved manifest, and matching hash-locked dependency runtime.
+  authorization  not_granted
+
+This handoff grants no authority.
