@@ -41,7 +41,7 @@ def _reasoning_parser(sub):
         ("cancel", "fence an unfinished invocation"),
         ("approve", "approve the exact proposed specification"),
         ("reject", "reject the exact proposed specification"),
-        ("execute", "check eligibility for experiment execution"),
+        ("execute", "execute the approved fixed experiment once"),
     ):
         item = actions.add_parser(action, help=help_text)
         item.add_argument("invocation", type=int)
@@ -130,6 +130,8 @@ def main(argv=None):
             if options.verb == "reason":
                 result = _reasoning_command(coordinator, options)
                 print(json.dumps(result, sort_keys=True))
+                if options.reason_action == "execute":
+                    return 0 if result["execution"]["status"] == "accepted" else 2
                 return 2 if options.reason_action == "run" and result["status"] != "completed" else 0
             if options.verb == "command":
                 raw = sys.stdin.read(16385) if options.args == "-" else options.args

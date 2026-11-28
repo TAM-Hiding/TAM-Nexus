@@ -1,0 +1,205 @@
+{
+  "authority": "informational_only",
+  "evidence_issues": [],
+  "followup_observations": [
+    {
+      "attempt": 1,
+      "evidence_references": [
+        {
+          "attempt": 1,
+          "sha256": "ed1d9a20d5203613933924d73efcbcd720c8790ed8a4e8f573b1b2dfc50a7ff9",
+          "work": 1
+        },
+        {
+          "attempt": 2,
+          "sha256": "5d800e0f7d4d91e18ae0cef448e5048dfed0f452e84d04ef80fb9c76c67691c2",
+          "work": 2
+        }
+      ],
+      "execution_plan": {
+        "argv": [
+          "/runtime/bin/python3",
+          "-I",
+          "-S",
+          "-B",
+          "/input/hero_cad_volume.py"
+        ],
+        "dependency_sha256": "d3386f3f11e2d75f3c3ebdfd5b4a9af65cfe51943232ae30d2cb45a466edcba0",
+        "limits": {
+          "address_space_bytes": 2147483648,
+          "cpu_seconds": 12,
+          "output_bytes": 8192,
+          "processes": 64,
+          "scratch_bytes": 4194304,
+          "wall_seconds": 15
+        },
+        "manifest_sha256": "28b11604fec5448fbef2795d02444669e9cd8bf834fd92a9ac15ce29258dd9ab",
+        "profile": "hero-cad-volume-crosscheck-v1",
+        "resource": "e105deeee4de79e1a0d7c0234c236f2420f6a4e569703b42d0961c65497f7ed1",
+        "script_sha256": "06e237cb826fa61af9b5889497b886a3b0be7327754bcc1ed1aeb89c52ac4f0f",
+        "source_revision": "b053d529c8cd32d07c5d37d060372b8bb0d85741",
+        "source_sha256": "9021d107d0c3fe570c6ec50d6873ed5355076d960cd9c8cabb1d270b950dc87b",
+        "version": 1
+      },
+      "grant": 1,
+      "invocation": 1,
+      "origin": 1,
+      "process": {
+        "elapsed_ms": 1580,
+        "exit_status": 0,
+        "limitations": [
+          "Output is controlled by the test process.",
+          "The supervisor observes process exit, not the truth of test assertions."
+        ],
+        "observations": {
+          "stderr": {
+            "bytes": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "stdout": {
+            "bytes": 101,
+            "sha256": "934ac706bae8b523b34570b257a223a9386177eef66e35dc55551ea20b996a0a"
+          }
+        },
+        "outcome": "command_passed",
+        "provenance": "supervisor_process_observation",
+        "source_unchanged": true,
+        "status": "test_exited"
+      },
+      "proposal_digest": "e004e99f83f545f26581c00812e27345d86339fda1d2d27676f132d7f7cef786",
+      "reference": {
+        "attempt": 1,
+        "invocation": 1,
+        "sha256": "c05eedf32c3a4e0d99a61a34f6547b9012fbfc413737774c162af5db5d1a0e13"
+      },
+      "sandbox": "nx-003-bubblewrap",
+      "schema": "nexus.experiment-capture",
+      "version": 1,
+      "worker_result": {
+        "measurement": {
+          "expected_mm3": 10009.36984944,
+          "mesh_mm3": 10009.36984944,
+          "method": "oriented_triangle_tetrahedra",
+          "reported_mm3": 10009.369849439998
+        },
+        "outcome": "volumes_agree",
+        "provenance": "worker_report_unverified"
+      }
+    }
+  ],
+  "hypotheses": [],
+  "investigations": [
+    {
+      "acceptance_packet_sha256": "d738863abecbf37e0b99bb5e3fba9b945fe7d86298b9438d5a9e51f577bc06d5",
+      "approved_scope": [
+        "read_pinned_source",
+        "hero-cad-box-v1"
+      ],
+      "authorization": 1,
+      "dependency_sha256": "d3386f3f11e2d75f3c3ebdfd5b4a9af65cfe51943232ae30d2cb45a466edcba0",
+      "execution_profile": "hero-cad-box-v1",
+      "manifest_sha256": "28b11604fec5448fbef2795d02444669e9cd8bf834fd92a9ac15ce29258dd9ab",
+      "repository": "TAM-Hiding/hero-cad",
+      "snapshot_sha256": "9021d107d0c3fe570c6ec50d6873ed5355076d960cd9c8cabb1d270b950dc87b",
+      "source_identity": "e105deeee4de79e1a0d7c0234c236f2420f6a4e569703b42d0961c65497f7ed1",
+      "source_revision": "b053d529c8cd32d07c5d37d060372b8bb0d85741",
+      "state": "awaiting_acceptance",
+      "work": 1,
+      "work_revision": "bf339c5ed1d8d52134dad6b5fa1b34460c775f4a6f31da2cce2b075f0423a15d"
+    },
+    {
+      "acceptance_packet_sha256": "783d2410cf83ac51da5b1b266e003772679302a909c22f1819a8a42a77dc6d6d",
+      "approved_scope": [
+        "read_pinned_source",
+        "hero-cad-box-v1"
+      ],
+      "authorization": 2,
+      "dependency_sha256": "d3386f3f11e2d75f3c3ebdfd5b4a9af65cfe51943232ae30d2cb45a466edcba0",
+      "execution_profile": "hero-cad-box-v1",
+      "manifest_sha256": "a09f9f41ed6ecfdcaf551b9085502d4a1e919e1e29c3fbcca43ebf2d025dab2a",
+      "repository": "TAM-Hiding/hero-cad",
+      "snapshot_sha256": "dd2ccb8df91403928bb5cae6a1036414c962f6780f441b6c4e14c556aae35e4e",
+      "source_identity": "f3a1d1e14040534d5791a08c1db61f3bbbfec8d524b3e5932370308713a48865",
+      "source_revision": "ff43cdd9ab36c24aa1ae4ff3cb42f7e35782bdea",
+      "state": "awaiting_acceptance",
+      "work": 2,
+      "work_revision": "30bdb19c22adc4359b302b89cb02cdc7ac791975946a075b360c81d0da638511"
+    }
+  ],
+  "notes_provenance": null,
+  "observations": [
+    {
+      "elapsed_ms": 2280,
+      "exit_status": 0,
+      "host_platform": {
+        "architecture": "x86_64",
+        "coordinator_python": "3.12.14",
+        "kernel": "6.18.57"
+      },
+      "limitations": [
+        "Output is controlled by the test process.",
+        "The supervisor observes process exit, not the truth of test assertions."
+      ],
+      "outcome": "command_passed",
+      "provenance": "supervisor_process_observation",
+      "reference": {
+        "attempt": 1,
+        "sha256": "ed1d9a20d5203613933924d73efcbcd720c8790ed8a4e8f573b1b2dfc50a7ff9",
+        "work": 1
+      },
+      "sandbox": "nx-003-bubblewrap",
+      "source_unchanged": true,
+      "status": "test_exited",
+      "stream_fingerprints": {
+        "stderr": {
+          "bytes": 60,
+          "sha256": "ab9019e334f0288b6eb3777e0c5f2bd69d13b0810a271d3d08d0bb22b6d03d9b"
+        },
+        "stdout": {
+          "bytes": 20,
+          "sha256": "eb6f78bad8eddb35f70fa9586c18bb3d4760330d29c41d21849e029702e694a8"
+        }
+      },
+      "test": "tests/test_document.py::test_box_regenerates_exact_solid",
+      "worker": "investigator"
+    },
+    {
+      "elapsed_ms": 1598,
+      "exit_status": 1,
+      "host_platform": {
+        "architecture": "x86_64",
+        "coordinator_python": "3.12.14",
+        "kernel": "6.18.57"
+      },
+      "limitations": [
+        "Output is controlled by the test process.",
+        "The supervisor observes process exit, not the truth of test assertions."
+      ],
+      "outcome": "command_exit_one",
+      "provenance": "supervisor_process_observation",
+      "reference": {
+        "attempt": 2,
+        "sha256": "5d800e0f7d4d91e18ae0cef448e5048dfed0f452e84d04ef80fb9c76c67691c2",
+        "work": 2
+      },
+      "sandbox": "nx-003-bubblewrap",
+      "source_unchanged": true,
+      "status": "test_exited",
+      "stream_fingerprints": {
+        "stderr": {
+          "bytes": 60,
+          "sha256": "ab9019e334f0288b6eb3777e0c5f2bd69d13b0810a271d3d08d0bb22b6d03d9b"
+        },
+        "stdout": {
+          "bytes": 958,
+          "sha256": "93fc7968a8c86390f0d69883e161e368aadd11e8055d6ae5e00533ffde8a860c"
+        }
+      },
+      "test": "tests/test_document.py::test_box_regenerates_exact_solid",
+      "worker": "investigator"
+    }
+  ],
+  "recommendations": [],
+  "schema": "nexus.investigation-handoff",
+  "version": 1
+}

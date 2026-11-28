@@ -174,6 +174,13 @@ COORDINATOR_MIGRATIONS = ((
         spec TEXT NOT NULL, digest TEXT NOT NULL, state TEXT NOT NULL,
         grant_id INTEGER REFERENCES grants(id)
     )""",
+), (
+    """CREATE TABLE experiment_runs (
+        id INTEGER PRIMARY KEY, invocation INTEGER NOT NULL UNIQUE REFERENCES experiment_proposals(invocation),
+        proposal_digest TEXT NOT NULL, grant_id INTEGER NOT NULL REFERENCES grants(id),
+        status TEXT NOT NULL CHECK(status IN ('claimed','launched','accepted','failed','uncertain')),
+        reason TEXT, artifact TEXT
+    )""",
 ))
 
 
