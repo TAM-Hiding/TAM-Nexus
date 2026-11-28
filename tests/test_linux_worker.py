@@ -111,7 +111,7 @@ class FailClosedTests(LinuxState):
             old.execute("DROP TABLE linux_runs")
             old.execute("PRAGMA user_version=1")
         with Coordinator(self.root) as reopened:
-            self.assertEqual(reopened.db.execute("PRAGMA user_version").fetchone()[0], 6)
+            self.assertEqual(reopened.db.execute("PRAGMA user_version").fetchone()[0], 7)
             self.assertEqual(reopened.report(OPERATOR, work), before)
 
     def test_linux_arm_prevents_fallback_and_preserves_budget(self):

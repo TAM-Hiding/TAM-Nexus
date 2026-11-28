@@ -16,6 +16,8 @@ NX-007 adds a [bounded reasoning worker and operator-reviewed experiment request
 
 NX-008 connects a [separately approved experiment to verified follow-up evidence](docs/nx-008/README.md).
 
+NX-009 records [operator conclusions and separately authorized reasoning disclosures](docs/nx-009/README.md).
+
 Run the offline suite with `python -m unittest discover -s tests -v` from the repository root. Linux and Python 3.11+ are required. All runtime modules use the Python standard library.
 
 | Document | Contents |

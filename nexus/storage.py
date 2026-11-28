@@ -181,6 +181,12 @@ COORDINATOR_MIGRATIONS = ((
         status TEXT NOT NULL CHECK(status IN ('claimed','launched','accepted','failed','uncertain')),
         reason TEXT, artifact TEXT
     )""",
+), (
+    """ALTER TABLE reasoning_invocations ADD COLUMN implementation TEXT NOT NULL
+        DEFAULT 'deterministic-investigator-v1'""",
+    "ALTER TABLE reasoning_invocations ADD COLUMN disclosure_grant INTEGER REFERENCES grants(id)",
+    "ALTER TABLE reasoning_invocations ADD COLUMN response_metadata TEXT",
+    "ALTER TABLE reasoning_invocations ADD COLUMN transport_state TEXT",
 ))
 
 

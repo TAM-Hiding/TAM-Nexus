@@ -10,6 +10,9 @@ from .storage import EvidenceError, digest, transaction
 
 
 def plan_for(c, row, spec):
+    from .reasoning_service import WORKER
+    if row["implementation"] != WORKER:
+        return None
     request = c._revision(c._work(row["origin"]))
     experiment = spec["request"]
     if (request.get("mode") != "pilot" or experiment["profile"] != reasoning.PROFILE

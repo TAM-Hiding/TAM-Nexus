@@ -1,0 +1,230 @@
+{
+  "deterministic": {
+    "assessment": {
+      "assessment": {
+        "authority": "informational_only",
+        "classification": "operator_assessment",
+        "disposition": "supported",
+        "evidence": [
+          {
+            "attempt": 1,
+            "sha256": "1875c6ad46ae339daf6c39809ad689217197f4ac1699bbb5097fbc128698628e",
+            "work": 1
+          },
+          {
+            "attempt": 2,
+            "sha256": "4d8621b07d211929f2ecc903ab53ec412052ba6d744c02ea26440c19280752fc",
+            "work": 2
+          },
+          {
+            "attempt": 1,
+            "invocation": 1,
+            "sha256": "e230edfc6b674c0f3c98155e71f430ff239fa15bc807bc72fb84cfd57b4720aa"
+          }
+        ],
+        "hypothesis_digest": "12d78c5328496bf58cf18249b909bc067db57873242bdc14bc22e716d242e964",
+        "invocation": 1,
+        "origin": 1,
+        "rationale": "The baseline passed and its independent mesh volume matched the specified box. The disposable control failed its original volume assertion.",
+        "reasoning_output_digest": "7f6484207febb5ef8886bff091f3e23ed8de62a14a32d8cdf73a7292387ec621",
+        "schema": "nexus.hypothesis-conclusion",
+        "uncertainty": "The cross-check measured only the baseline. Both calculations share document regeneration and the OCCT kernel.",
+        "version": 1
+      },
+      "digest": "87def5e177c9d3710f20e1368a686e1ed2b8d792cd5bba3253baad02f52a0c32",
+      "integrity": "verified"
+    },
+    "baseline_crosscheck": {
+      "reference": {
+        "attempt": 1,
+        "invocation": 1,
+        "sha256": "e230edfc6b674c0f3c98155e71f430ff239fa15bc807bc72fb84cfd57b4720aa"
+      },
+      "result": {
+        "measurement": {
+          "expected_mm3": 10009.36984944,
+          "mesh_mm3": 10009.36984944,
+          "method": "oriented_triangle_tetrahedra",
+          "reported_mm3": 10009.369849439998
+        },
+        "outcome": "volumes_agree",
+        "provenance": "worker_report_unverified"
+      }
+    },
+    "invocation": 1,
+    "reasoning": {
+      "experiment": {
+        "evidence": [
+          {
+            "attempt": 1,
+            "sha256": "1875c6ad46ae339daf6c39809ad689217197f4ac1699bbb5097fbc128698628e",
+            "work": 1
+          },
+          {
+            "attempt": 2,
+            "sha256": "4d8621b07d211929f2ecc903ab53ec412052ba6d744c02ea26440c19280752fc",
+            "work": 2
+          }
+        ],
+        "profile": "hero-cad-volume-crosscheck-v1",
+        "purpose": "Independently measure volume for the pinned baseline box.",
+        "target": 1,
+        "value": "Establish a reference measurement independent of the reported volume calculation."
+      },
+      "hypotheses": [
+        {
+          "contradictory": [],
+          "explanation": "The deliberately modified disposable control may halve the reported box volume.",
+          "supporting": [
+            {
+              "attempt": 1,
+              "sha256": "1875c6ad46ae339daf6c39809ad689217197f4ac1699bbb5097fbc128698628e",
+              "work": 1
+            },
+            {
+              "attempt": 2,
+              "sha256": "4d8621b07d211929f2ecc903ab53ec412052ba6d744c02ea26440c19280752fc",
+              "work": 2
+            }
+          ],
+          "uncertainty": "The baseline passed and the control failed. Exit status alone cannot identify the failing calculation.",
+          "verification": "Compare an independent geometric volume measurement with the reported volume."
+        }
+      ],
+      "invocation": 1,
+      "schema": "nexus.reasoning-output",
+      "version": 1
+    }
+  },
+  "final_counts": {
+    "experiment_proposals": 2,
+    "experiment_runs": 1,
+    "reasoning_invocations": 2
+  },
+  "live_inference_performed": false,
+  "mock": {
+    "invocation": 2,
+    "preview": {
+      "destination": "in-process-fixture",
+      "disclosure_sha256": "161f2c6b0572b213db46d43485da338701a7a693d40bf3d2a2b6e1552b2a516e",
+      "payload_sha256": "d4d4004863754f7fe872f8f17f5a9924ffda0eb297943a8134954618f8e494f9"
+    },
+    "provenance": {
+      "classification": "unverified_reasoning",
+      "disclosure": {
+        "destination": "in-process-fixture",
+        "implementation": "mock-v1",
+        "input_sha256": "d97b510e6c83125f3ff31b508c6b50776b472161cf5463988cbf62c2551646d9",
+        "invocation": 2,
+        "payload_sha256": "d4d4004863754f7fe872f8f17f5a9924ffda0eb297943a8134954618f8e494f9",
+        "policy": 1,
+        "recipient_uid": null,
+        "version": 1,
+        "work": 1
+      },
+      "disclosure_grant": 2,
+      "execution": null,
+      "execution_support": "no_compatible_execution_profile",
+      "grant": null,
+      "grant_status": "not_granted",
+      "hypothesis_digests": [
+        "12d78c5328496bf58cf18249b909bc067db57873242bdc14bc22e716d242e964"
+      ],
+      "implementation": "mock-v1",
+      "inference_response": {
+        "completion_tokens": null,
+        "elapsed_ms": 5,
+        "model": null,
+        "prompt_tokens": null,
+        "response_sha256": "8a84bab57b829ed1b6404c8933106a8d82c88f1809c22197f0c3212fb93aad81"
+      },
+      "input_digest": "d97b510e6c83125f3ff31b508c6b50776b472161cf5463988cbf62c2551646d9",
+      "invocation": 2,
+      "origin": 1,
+      "proposal_digest": "55ce6477ca3028fea3f42cc2def86238b9300dc2fe967e2506a1c47f75ddc5fd",
+      "proposal_state": "proposed",
+      "reason": null,
+      "reasoning_input_sha256": "d97b510e6c83125f3ff31b508c6b50776b472161cf5463988cbf62c2551646d9",
+      "status": "completed",
+      "transport_state": "response_received"
+    },
+    "reasoning": {
+      "experiment": {
+        "evidence": [
+          {
+            "attempt": 1,
+            "sha256": "1875c6ad46ae339daf6c39809ad689217197f4ac1699bbb5097fbc128698628e",
+            "work": 1
+          },
+          {
+            "attempt": 2,
+            "sha256": "4d8621b07d211929f2ecc903ab53ec412052ba6d744c02ea26440c19280752fc",
+            "work": 2
+          }
+        ],
+        "profile": "hero-cad-volume-crosscheck-v1",
+        "purpose": "Independently measure volume for the pinned baseline box.",
+        "target": 1,
+        "value": "Establish a reference measurement independent of the reported volume calculation."
+      },
+      "hypotheses": [
+        {
+          "contradictory": [],
+          "explanation": "The deliberately modified disposable control may halve the reported box volume.",
+          "supporting": [
+            {
+              "attempt": 1,
+              "sha256": "1875c6ad46ae339daf6c39809ad689217197f4ac1699bbb5097fbc128698628e",
+              "work": 1
+            },
+            {
+              "attempt": 2,
+              "sha256": "4d8621b07d211929f2ecc903ab53ec412052ba6d744c02ea26440c19280752fc",
+              "work": 2
+            }
+          ],
+          "uncertainty": "The baseline passed and the control failed. Exit status alone cannot identify the failing calculation.",
+          "verification": "Compare an independent geometric volume measurement with the reported volume."
+        }
+      ],
+      "invocation": 2,
+      "schema": "nexus.reasoning-output",
+      "version": 1
+    },
+    "refusals": {
+      "altered_disclosure_digest": {
+        "ok": false,
+        "reason": "disclosure_digest_mismatch"
+      },
+      "before_disclosure": {
+        "ok": false,
+        "reason": "disclosure_approval_required"
+      },
+      "experiment_execution": {
+        "ok": false,
+        "reason": "no_compatible_execution_profile"
+      }
+    }
+  },
+  "schema": "nx-009-demonstration",
+  "source_process_outcomes": [
+    {
+      "exit": 0,
+      "outcome": "command_passed",
+      "reference": {
+        "attempt": 1,
+        "sha256": "1875c6ad46ae339daf6c39809ad689217197f4ac1699bbb5097fbc128698628e",
+        "work": 1
+      }
+    },
+    {
+      "exit": 1,
+      "outcome": "command_exit_one",
+      "reference": {
+        "attempt": 2,
+        "sha256": "4d8621b07d211929f2ecc903ab53ec412052ba6d744c02ea26440c19280752fc",
+        "work": 2
+      }
+    }
+  ]
+}
