@@ -1,18 +1,21 @@
 """Disclosure scope for the optional NX-009 pilot, after local evidence verification."""
 
-from . import reasoning
+from pathlib import Path
+
+from . import pilot, reasoning
+from .storage import digest
 
 OBJECTIVE = "Compare the pinned box baseline with its disposable negative control."
 
-# The immutable NX-008 manifests bind all approved source files, their snapshot,
-# the dependency environment, the command and the resource limits. Local work IDs,
-# checkout identities and timings legitimately differ when reproducing that run.
+# Exact path set shared by the two pinned git archives. This is coordinator-owned
+# policy, never a list supplied by the optional worker.
+PATHS = Path(__file__).with_name("demo_source_paths.txt").read_text().splitlines()
 DEMO = (
     ("b053d529c8cd32d07c5d37d060372b8bb0d85741",
-     "28b11604fec5448fbef2795d02444669e9cd8bf834fd92a9ac15ce29258dd9ab",
+     "9021d107d0c3fe570c6ec50d6873ed5355076d960cd9c8cabb1d270b950dc87b",
      0, "command_passed"),
     ("ff43cdd9ab36c24aa1ae4ff3cb42f7e35782bdea",
-     "a09f9f41ed6ecfdcaf551b9085502d4a1e919e1e29c3fbcca43ebf2d025dab2a",
+     "dd2ccb8df91403928bb5cae6a1036414c962f6780f441b6c4e14c556aae35e4e",
      1, "command_exit_one"),
 )
 
@@ -24,10 +27,15 @@ def validate(request):
     if request["objective"] != OBJECTIVE or len(packet["investigations"]) != len(DEMO):
         raise ValueError("outside_demo_disclosure_scope")
     observations = {o["reference"]["work"]: o for o in packet["observations"]}
-    for subject, (pin, manifest, code, outcome) in zip(packet["investigations"], DEMO, strict=True):
+    dependency = packet["investigations"][0]["dependency_sha256"]
+    if not isinstance(dependency, str) or not pilot.SHA256.fullmatch(dependency):
+        raise ValueError("outside_demo_disclosure_scope")
+    for subject, (pin, snapshot, code, outcome) in zip(packet["investigations"], DEMO, strict=True):
+        manifest = digest(pilot.pinned_manifest(pin, snapshot, PATHS, dependency))
         observed = observations[subject["work"]]
         if (subject["repository"] != "TAM-Hiding/hero-cad"
                 or subject["source_revision"] != pin or subject["manifest_sha256"] != manifest
+                or subject["snapshot_sha256"] != snapshot or subject["dependency_sha256"] != dependency
                 or subject["execution_profile"] != "hero-cad-box-v1"
                 or subject["approved_scope"] != ["read_pinned_source", "hero-cad-box-v1"]
                 or observed["test"] != "tests/test_document.py::test_box_regenerates_exact_solid"

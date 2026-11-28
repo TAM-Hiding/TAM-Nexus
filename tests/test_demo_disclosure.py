@@ -30,3 +30,23 @@ class DemoDisclosureTests(unittest.TestCase):
                 packet[group][0][field] = other
                 with self.assertRaisesRegex(ValueError, "outside_demo_disclosure_scope"):
                     demo_disclosure.validate(make(demo_disclosure.OBJECTIVE, 27, packet))
+
+    def test_runtime_variation_requires_matching_exact_manifests(self):
+        from nexus import pilot
+        from nexus.storage import digest
+
+        for subject in self.packet["investigations"]:
+            subject["dependency_sha256"] = "a" * 64
+            manifest = pilot.pinned_manifest(subject["source_revision"], subject["snapshot_sha256"],
+                                             demo_disclosure.PATHS, "a" * 64)
+            subject["manifest_sha256"] = digest(manifest)
+        def validate():
+            demo_disclosure.validate(reasoning.make_input(demo_disclosure.OBJECTIVE, 27, self.packet))
+        validate()
+        subject["dependency_sha256"] = "b" * 64
+        with self.assertRaises(ValueError):
+            validate()
+        subject["dependency_sha256"] = "a" * 64
+        subject["manifest_sha256"] = digest(dict(manifest, paths=[]))
+        with self.assertRaises(ValueError):
+            validate()

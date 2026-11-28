@@ -189,7 +189,7 @@ class HandoffTests(LinuxState):
             result = pilot.preflight()
         self.assertFalse(result["ok"])
         self.assertIn("3.11", result["hint"])
-        with patch("nexus.pilot.subprocess.run") as run:
+        with patch("nexus.sandbox.subprocess.run") as run:
             run.return_value.stdout = b"--ro-bind-data"
             result = pilot.preflight()
         self.assertFalse(result["ok"])

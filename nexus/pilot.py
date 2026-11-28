@@ -9,7 +9,6 @@ from pathlib import Path
 import re
 import shutil
 import stat
-import subprocess
 import sys
 import tarfile
 import time
@@ -89,10 +88,14 @@ def manifest_from_archive(revision, dependency_digest, stream):
                     files[entry.name] = blob.read()
     except (tarfile.TarError, ValueError, OSError) as exc:
         raise source.SourceError("invalid_pilot_archive") from exc
+    return pinned_manifest(revision, source.snapshot_digest(files), sorted(files), dependency_digest)
+
+
+def pinned_manifest(revision, snapshot, paths, dependency):
     return manifest({"version": 1, "repository": REPOSITORY, "profile": PROFILE,
                      "argv": ARGV, "limits": LIMITS, "evidence": ["exit", "stdout", "stderr"],
-                     "revision": revision, "source_digest": source.snapshot_digest(files),
-                     "source_paths": sorted(files), "dependency_digest": dependency_digest})
+                     "revision": revision, "source_digest": snapshot,
+                     "source_paths": paths, "dependency_digest": dependency})
 
 
 def checkout_files(path, spec, identity=None):
@@ -229,13 +232,11 @@ def preflight(environment=None, expected=None, *, staging_directory=None):
         return {"ok": False, "checks": {"host": str(exc)},
                 "hint": "Check x86-64 Linux, system Python, Bubblewrap, util-linux and pidfds."}
     try:
-        help_text = subprocess.run([sandbox.BWRAP, "--help"], env=sandbox.ENV,
-                                   stdin=subprocess.DEVNULL, capture_output=True,
-                                   timeout=3, check=True).stdout
-    except (OSError, subprocess.SubprocessError):
-        help_text = b""
-    required = ("--ro-bind-fd", "--json-status-fd", "--ro-bind-data", "--disable-userns")
-    missing = [flag for flag in required if flag.encode() not in help_text]
+        with sandbox.bubblewrap() as (executable, descriptors):
+            missing = sandbox.missing_flags(executable, descriptors)
+    except sandbox.SandboxUnavailable as exc:
+        return {"ok": False, "checks": {"bubblewrap": str(exc)},
+                "hint": "Check the configured absolute launcher path, permissions and approved SHA-256."}
     if missing:
         checks["bubblewrap"] = {"missing_flags": missing}
         return {"ok": False, "checks": checks,
