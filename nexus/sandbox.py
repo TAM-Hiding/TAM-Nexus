@@ -326,7 +326,13 @@ if __name__ == "__main__":
         os.fstat(int(lock_fd))
         files = None
         pilot = None
-        if source and source[0] == "pilot":
+        payload = bytes.fromhex(fixture)
+        if source and source[0] == "reasoning":
+            with os.fdopen(int(source[1]), "rb") as stream:
+                payload = stream.read(65537)
+            if len(payload) > 65536:
+                raise SandboxUnavailable("reasoning_input_oversized")
+        elif source and source[0] == "pilot":
             pilot = (int(source[1]), None if source[2] == "-" else int(source[2]), source[2] == "-")
         elif source:
             with os.fdopen(int(source[0]), "rb") as stream:
@@ -334,7 +340,7 @@ if __name__ == "__main__":
             if len(serialized) > 74000:
                 raise SandboxUnavailable("source_manifest_mismatch")
             files = {key: bytes.fromhex(value) for key, value in json.loads(serialized).items()}
-        result = supervise(bytes.fromhex(script), bytes.fromhex(fixture), float(timeout), 0, files=files, pilot=pilot)
+        result = supervise(bytes.fromhex(script), payload, float(timeout), 0, files=files, pilot=pilot)
         print(json.dumps(result, ensure_ascii=True, allow_nan=False))
     finally:
         os.close(int(lock_fd))

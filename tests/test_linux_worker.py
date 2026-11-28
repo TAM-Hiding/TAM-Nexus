@@ -104,12 +104,14 @@ class FailClosedTests(LinuxState):
         work = self.submit()
         before = self.coordinator.report(OPERATOR, work)
         with sqlite3.connect(self.root / "nexus.sqlite3") as old:
+            for table in ("experiment_proposals", "reasoning_charges", "reasoning_invocations"):
+                old.execute(f"DROP TABLE {table}")
             old.execute("DROP TABLE pilot_authorizations")
             old.execute("DROP TABLE source_authorizations")
             old.execute("DROP TABLE linux_runs")
             old.execute("PRAGMA user_version=1")
         with Coordinator(self.root) as reopened:
-            self.assertEqual(reopened.db.execute("PRAGMA user_version").fetchone()[0], 4)
+            self.assertEqual(reopened.db.execute("PRAGMA user_version").fetchone()[0], 5)
             self.assertEqual(reopened.report(OPERATOR, work), before)
 
     def test_linux_arm_prevents_fallback_and_preserves_budget(self):

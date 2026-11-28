@@ -159,6 +159,21 @@ COORDINATOR_MIGRATIONS = ((
         id INTEGER PRIMARY KEY, checkout TEXT NOT NULL, environment TEXT NOT NULL,
         resource TEXT NOT NULL, manifest TEXT NOT NULL, policy INTEGER NOT NULL
     )""",
+), (
+    """CREATE TABLE reasoning_invocations (
+        id INTEGER PRIMARY KEY, origin INTEGER NOT NULL REFERENCES work(id), objective TEXT NOT NULL,
+        works TEXT NOT NULL, policy INTEGER NOT NULL, input_digest TEXT,
+        status TEXT NOT NULL, output TEXT, reason TEXT
+    )""",
+    """CREATE TABLE reasoning_charges (
+        invocation INTEGER NOT NULL REFERENCES reasoning_invocations(id),
+        work INTEGER NOT NULL REFERENCES work(id), PRIMARY KEY(work,invocation)
+    )""",
+    """CREATE TABLE experiment_proposals (
+        invocation INTEGER PRIMARY KEY REFERENCES reasoning_invocations(id),
+        spec TEXT NOT NULL, digest TEXT NOT NULL, state TEXT NOT NULL,
+        grant_id INTEGER REFERENCES grants(id)
+    )""",
 ))
 
 

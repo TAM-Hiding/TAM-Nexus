@@ -1,0 +1,171 @@
+{
+  "decisions": [
+    {
+      "command": "retry identical start command",
+      "result": {
+        "invocation": 1
+      }
+    },
+    {
+      "command": "execute before approval",
+      "result": {
+        "ok": false,
+        "reason": "experiment_approval_required"
+      }
+    },
+    {
+      "command": "approve altered digest",
+      "result": {
+        "ok": false,
+        "reason": "proposal_digest_mismatch"
+      }
+    },
+    {
+      "command": "approve exact digest",
+      "grant_status": "current",
+      "proposal_digest": "5252641f4d2f47485c95c0364ec91ea386ebd53c995a99fcb4cd8423ecab188a",
+      "proposal_state": "approved"
+    },
+    {
+      "command": "execute approved cross-check",
+      "result": {
+        "ok": false,
+        "reason": "no_compatible_execution_profile"
+      }
+    },
+    {
+      "command": "reopen and inspect",
+      "grant_status": "current",
+      "proposal_digest": "5252641f4d2f47485c95c0364ec91ea386ebd53c995a99fcb4cd8423ecab188a",
+      "proposal_state": "approved"
+    }
+  ],
+  "objective": "Compare the pinned box baseline with its disposable negative control.",
+  "observed": [
+    {
+      "exit_status": 0,
+      "outcome": "command_passed",
+      "reference": {
+        "attempt": 1,
+        "sha256": "8672755a288c3f504125cf21808850a958baeba9d0307fe2965e53caabf12309",
+        "work": 1
+      },
+      "source_revision": "b053d529c8cd32d07c5d37d060372b8bb0d85741"
+    },
+    {
+      "exit_status": 1,
+      "outcome": "command_exit_one",
+      "reference": {
+        "attempt": 2,
+        "sha256": "bf61029a6b79251fc89d3def62bc8671eaaa81666672dacde2c4ba1b7ab111d4",
+        "work": 2
+      },
+      "source_revision": "ff43cdd9ab36c24aa1ae4ff3cb42f7e35782bdea"
+    }
+  ],
+  "validated": {
+    "classification": "unverified_reasoning",
+    "execution_support": "no_compatible_execution_profile",
+    "grant": null,
+    "grant_status": "not_granted",
+    "input_digest": "a1388468d232bff52ef144430d69018c4ef12a9824ad6ad47b7d6d179e54d44b",
+    "invocation": 1,
+    "origin": 1,
+    "proposal": {
+      "input_digest": "a1388468d232bff52ef144430d69018c4ef12a9824ad6ad47b7d6d179e54d44b",
+      "invocation": 1,
+      "limits": {
+        "max_runs": 1,
+        "output_bytes": 8192,
+        "wall_seconds": 15
+      },
+      "origin": 1,
+      "permission": "approve_read_only_experiment",
+      "request": {
+        "evidence": [
+          {
+            "attempt": 1,
+            "sha256": "8672755a288c3f504125cf21808850a958baeba9d0307fe2965e53caabf12309",
+            "work": 1
+          },
+          {
+            "attempt": 2,
+            "sha256": "bf61029a6b79251fc89d3def62bc8671eaaa81666672dacde2c4ba1b7ab111d4",
+            "work": 2
+          }
+        ],
+        "profile": "hero-cad-volume-crosscheck-v1",
+        "purpose": "Independently measure volume for the pinned baseline box.",
+        "target": 1,
+        "value": "Establish a reference measurement independent of the reported volume calculation."
+      },
+      "target_source": {
+        "acceptance_packet_sha256": "f92e8b120d3f2a49b3ccfec7629abfc92857d6d48998d3abac567e8c3dafcdde",
+        "approved_scope": [
+          "read_pinned_source",
+          "hero-cad-box-v1"
+        ],
+        "authorization": 1,
+        "dependency_sha256": "d3386f3f11e2d75f3c3ebdfd5b4a9af65cfe51943232ae30d2cb45a466edcba0",
+        "execution_profile": "hero-cad-box-v1",
+        "manifest_sha256": "28b11604fec5448fbef2795d02444669e9cd8bf834fd92a9ac15ce29258dd9ab",
+        "repository": "TAM-Hiding/hero-cad",
+        "snapshot_sha256": "9021d107d0c3fe570c6ec50d6873ed5355076d960cd9c8cabb1d270b950dc87b",
+        "source_identity": "e105deeee4de79e1a0d7c0234c236f2420f6a4e569703b42d0961c65497f7ed1",
+        "source_revision": "b053d529c8cd32d07c5d37d060372b8bb0d85741",
+        "state": "awaiting_acceptance",
+        "work": 1,
+        "work_revision": "bf339c5ed1d8d52134dad6b5fa1b34460c775f4a6f31da2cce2b075f0423a15d"
+      },
+      "version": 1,
+      "worker": "deterministic-investigator-v1"
+    },
+    "proposal_digest": "5252641f4d2f47485c95c0364ec91ea386ebd53c995a99fcb4cd8423ecab188a",
+    "proposal_state": "proposed",
+    "reason": null,
+    "reasoning": {
+      "experiment": {
+        "evidence": [
+          {
+            "attempt": 1,
+            "sha256": "8672755a288c3f504125cf21808850a958baeba9d0307fe2965e53caabf12309",
+            "work": 1
+          },
+          {
+            "attempt": 2,
+            "sha256": "bf61029a6b79251fc89d3def62bc8671eaaa81666672dacde2c4ba1b7ab111d4",
+            "work": 2
+          }
+        ],
+        "profile": "hero-cad-volume-crosscheck-v1",
+        "purpose": "Independently measure volume for the pinned baseline box.",
+        "target": 1,
+        "value": "Establish a reference measurement independent of the reported volume calculation."
+      },
+      "hypotheses": [
+        {
+          "contradictory": [],
+          "explanation": "The deliberately modified disposable control may halve the reported box volume.",
+          "supporting": [
+            {
+              "attempt": 1,
+              "sha256": "8672755a288c3f504125cf21808850a958baeba9d0307fe2965e53caabf12309",
+              "work": 1
+            },
+            {
+              "attempt": 2,
+              "sha256": "bf61029a6b79251fc89d3def62bc8671eaaa81666672dacde2c4ba1b7ab111d4",
+              "work": 2
+            }
+          ],
+          "uncertainty": "The baseline passed and the control failed. Exit status alone cannot identify the failing calculation.",
+          "verification": "Compare an independent geometric volume measurement with the reported volume."
+        }
+      ],
+      "invocation": 1,
+      "schema": "nexus.reasoning-output",
+      "version": 1
+    },
+    "status": "completed"
+  }
+}

@@ -23,11 +23,12 @@ from .storage import (
 OPERATOR = object()
 TERMINAL = frozenset(("completed", "rejected", "declined", "failed", "cancelled"))
 COMMANDS = frozenset((
+    "start-reasoning",
     "message", "submit", "propose", "decide", "revoke", "claim", "run", "resume",
     "recover", "cancel", "accept", "rework", "publish", "reconcile", "advance",
     "policy", "register", "archive", "authorize-source", "submit-source", "authorize-pilot", "submit-pilot",
 ))
-GLOBAL = frozenset(("message", "submit", "recover", "advance", "policy", "register",
+GLOBAL = frozenset(("start-reasoning", "message", "submit", "recover", "advance", "policy", "register",
                     "authorize-source", "submit-source", "authorize-pilot", "submit-pilot"))
 LEASE_TICKS = 3
 
@@ -896,7 +897,17 @@ class Coordinator:
         self._event("clock_advanced", actor="operator", ticks=ticks)
         return self._ok(tick=self._settings()["tick"])
 
+    def _cmd_start_reasoning(self, objective, works):
+        from .reasoning_service import _issue
+        try:
+            invocation = _issue(self, objective, works)
+        except ValueError as exc:
+            raise Rejected(str(exc)) from exc
+        return self._ok(invocation=invocation)
+
     def _cmd_policy(self):
+        from .reasoning_service import fence_active
+        fence_active(self, "policy_changed")
         self.db.execute("UPDATE settings SET policy=policy+1")
         for row in self.db.execute("SELECT id FROM work WHERE state IN ('queued','running')").fetchall():
             self._interrupt(self._work(row["id"]), "policy_changed")
@@ -912,6 +923,8 @@ class Coordinator:
 
     def _cmd_recover(self, restore=False):
         self._require(type(restore) is bool, "invalid_restore_flag")
+        from .reasoning_service import fence_active
+        fence_active(self, "restart_fenced")
         if restore:
             self.db.execute("UPDATE settings SET publication_frozen=1")
             self._event("publication_frozen", actor="operator", reason="possible_missing_intents")

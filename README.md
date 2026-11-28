@@ -12,6 +12,8 @@ NX-005 adds an approved [HERO-CAD workstation pilot](docs/nx-005/README.md) with
 
 NX-006 adds [engineering investigation handoffs](docs/nx-006/README.md) and a manifest-bound workstation acceptance probe.
 
+NX-007 adds a [bounded reasoning worker and operator-reviewed experiment requests](docs/nx-007/README.md).
+
 Run the offline suite with `python -m unittest discover -s tests -v` from the repository root. Linux and Python 3.11+ are required. All runtime modules use the Python standard library.
 
 | Document | Contents |
