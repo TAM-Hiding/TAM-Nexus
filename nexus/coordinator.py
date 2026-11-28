@@ -5,6 +5,7 @@ from contextlib import ExitStack
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import inspect
+import platform
 import json
 import re
 
@@ -12,7 +13,7 @@ from .fixtures import (
     BASE, DEFAULT_WORKERS, PHASES, RESOURCE, SCOPE, FixtureBroker, archive_lookup,
     run_fixture,
 )
-from . import pilot, source
+from . import handoff, pilot, source
 from .linux_worker import RunnerBusy, dispatch_lock
 from .storage import (
     COORDINATOR_MIGRATIONS, SCHEMA, Artifacts, EvidenceError, InjectedCrash, digest, encode, open_database,
@@ -54,12 +55,21 @@ class Job:
 
 
 class Coordinator:
-    def __init__(self, root, *, runner=None):
-        root = private_directory(root)
-        self.root = root.resolve()
-        self.runner = runner
-        self.artifacts = Artifacts(root / "artifacts")
-        self.db = open_database(root / "nexus.sqlite3", SCHEMA, COORDINATOR_MIGRATIONS)
+    def __init__(self, root, *, runner=None, readonly=False):
+        try:
+            root = private_directory(root, create=not readonly)
+            self.root = root.resolve()
+            self.runner = runner
+            self.artifacts = Artifacts(root / "artifacts", create=not readonly)
+            self.db = open_database(root / "nexus.sqlite3", SCHEMA, COORDINATOR_MIGRATIONS,
+                                    readonly=readonly)
+        except FileNotFoundError as exc:
+            if readonly:
+                raise Rejected("handoff_state_uninitialized_or_missing") from exc
+            raise
+        self.broker = None
+        if readonly:
+            return
         try:
             self.broker = FixtureBroker(root)
             with transaction(self.db):
@@ -74,7 +84,8 @@ class Coordinator:
         return self
 
     def __exit__(self, *_exc):
-        self.broker.close()
+        if self.broker is not None:
+            self.broker.close()
         self.db.close()
 
     def _row(self, query, values=()):
@@ -636,6 +647,10 @@ class Coordinator:
                 if job.mode in ("source", "pilot") and "streams" in observed:
                     try:
                         capture = source.capture(observed, self._revision(self._work(work_id)), job)
+                        capture["host_platform"] = {
+                            "kernel": platform.release(), "architecture": platform.machine(),
+                            "coordinator_python": platform.python_version(),
+                        }
                         capture_key = self.artifacts.put(capture)
                     except (source.SourceError, EvidenceError):
                         observed = {"status": "invalid_test_observation"}
@@ -1171,6 +1186,11 @@ class Coordinator:
             self._require(any(json.loads(row["data"])["artifact"] == key for row in observations),
                           "source_evidence_not_assigned")
             return self.artifacts.get(key)
+
+    def engineering_handoff(self, principal, works, notes=None):
+        self._require(principal is OPERATOR, "operator_required")
+        with transaction(self.db, write=False):
+            return handoff.build(self, works, notes)
 
     def report(self, principal, work_id):
         """Redacted export. Free-form conversation is available only through message()."""

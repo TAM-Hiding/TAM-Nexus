@@ -28,27 +28,35 @@ class InjectedCrash(Exception):
     """A deliberate failure at a durable boundary."""
 
 
-def private_directory(path):
+def private_directory(path, *, create=True):
     path = Path(path)
-    path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if create:
+        path.mkdir(mode=0o700, parents=True, exist_ok=True)
     info = path.lstat()
     if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
         raise ValueError("state and evidence directories must be owner-only directories")
     return path
 
 
-def open_database(path, schema, migrations=()):
+def open_database(path, schema, migrations=(), *, readonly=False):
     # The enclosing directory is private. Restrict the database itself as well.
-    fd = os.open(path, os.O_CREAT | os.O_NOFOLLOW | os.O_RDONLY, 0o600)
-    os.close(fd)
+    if not readonly:
+        fd = os.open(path, os.O_CREAT | os.O_NOFOLLOW | os.O_RDONLY, 0o600)
+        os.close(fd)
     info = path.lstat()
     if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
             or info.st_mode & 0o077 or info.st_nlink != 1):
         raise ValueError("database must be a private regular file")
-    db = sqlite3.connect(path, isolation_level=None, timeout=10)
+    target = path.absolute().as_uri() + "?mode=ro" if readonly else path
+    db = sqlite3.connect(target, uri=readonly, isolation_level=None, timeout=10)
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA foreign_keys = ON")
     try:
+        if readonly:
+            version = db.execute("PRAGMA user_version").fetchone()[0]
+            if version != len(migrations) + 1:
+                raise ValueError("open the coordinator normally to upgrade this state before export")
+            return db
         with transaction(db):
             version = db.execute("PRAGMA user_version").fetchone()[0]
             if version == 0:
@@ -157,8 +165,8 @@ COORDINATOR_MIGRATIONS = ((
 class Artifacts:
     MAX_BYTES = 32768
 
-    def __init__(self, root):
-        self.root = private_directory(root)
+    def __init__(self, root, *, create=True):
+        self.root = private_directory(root, create=create)
 
     def put(self, value, *, crash=False):
         contents = encode(value).encode("ascii")

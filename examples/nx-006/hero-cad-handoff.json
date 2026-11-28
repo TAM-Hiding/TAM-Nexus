@@ -1,0 +1,162 @@
+{
+  "authority": "informational_only",
+  "evidence_issues": [],
+  "hypotheses": [
+    {
+      "contradictory": [],
+      "explanation": "The scoped regression can detect volume-only errors without a GUI session.",
+      "supporting": [
+        {
+          "attempt": 1,
+          "sha256": "e5855de4f2593c1aa7158bccc6d5adab0a796200dd3d7ba9ac0a28718aa19d45",
+          "work": 1
+        },
+        {
+          "attempt": 2,
+          "sha256": "93bca9c69a77d77224149317d130eb6f591b4dd4f3e3baf950b955321bfe8494",
+          "work": 2
+        }
+      ],
+      "uncertainty": "The negative control deliberately changed the volume helper. Similar output on a production defect could have a different cause.",
+      "verification": "Use the same approved profile on a known real volume discrepancy and verify the assertion location in the private capture."
+    }
+  ],
+  "investigations": [
+    {
+      "acceptance_packet_sha256": "fd08c21cbbf11029434595493463bfacbefc0cada053885d602c55afe6074748",
+      "approved_scope": [
+        "read_pinned_source",
+        "hero-cad-box-v1"
+      ],
+      "authorization": 1,
+      "dependency_sha256": "d3386f3f11e2d75f3c3ebdfd5b4a9af65cfe51943232ae30d2cb45a466edcba0",
+      "execution_profile": "hero-cad-box-v1",
+      "manifest_sha256": "28b11604fec5448fbef2795d02444669e9cd8bf834fd92a9ac15ce29258dd9ab",
+      "repository": "TAM-Hiding/hero-cad",
+      "snapshot_sha256": "9021d107d0c3fe570c6ec50d6873ed5355076d960cd9c8cabb1d270b950dc87b",
+      "source_identity": "e105deeee4de79e1a0d7c0234c236f2420f6a4e569703b42d0961c65497f7ed1",
+      "source_revision": "b053d529c8cd32d07c5d37d060372b8bb0d85741",
+      "state": "awaiting_acceptance",
+      "work": 1,
+      "work_revision": "e5a0ee55d203825f1e43f5f0a2887dbc2e4390e1264ef29f0d3d61bef16fc0ac"
+    },
+    {
+      "acceptance_packet_sha256": "91eef0c69e58a2bc945fd843d4e32bc36f19e6adc933e52f159891d20757e111",
+      "approved_scope": [
+        "read_pinned_source",
+        "hero-cad-box-v1"
+      ],
+      "authorization": 2,
+      "dependency_sha256": "d3386f3f11e2d75f3c3ebdfd5b4a9af65cfe51943232ae30d2cb45a466edcba0",
+      "execution_profile": "hero-cad-box-v1",
+      "manifest_sha256": "a09f9f41ed6ecfdcaf551b9085502d4a1e919e1e29c3fbcca43ebf2d025dab2a",
+      "repository": "TAM-Hiding/hero-cad",
+      "snapshot_sha256": "dd2ccb8df91403928bb5cae6a1036414c962f6780f441b6c4e14c556aae35e4e",
+      "source_identity": "f3a1d1e14040534d5791a08c1db61f3bbbfec8d524b3e5932370308713a48865",
+      "source_revision": "ff43cdd9ab36c24aa1ae4ff3cb42f7e35782bdea",
+      "state": "awaiting_acceptance",
+      "work": 2,
+      "work_revision": "22627888954b926764b9e0f0b1d98cdd92fc18c501ff926315d93df6a1cf4be6"
+    }
+  ],
+  "notes_provenance": "operator_supplied_unverified",
+  "observations": [
+    {
+      "elapsed_ms": 1912,
+      "exit_status": 0,
+      "host_platform": {
+        "architecture": "x86_64",
+        "coordinator_python": "3.12.14",
+        "kernel": "6.18.57"
+      },
+      "limitations": [
+        "Output is controlled by the test process.",
+        "The supervisor observes process exit, not the truth of test assertions."
+      ],
+      "outcome": "command_passed",
+      "provenance": "supervisor_process_observation",
+      "reference": {
+        "attempt": 1,
+        "sha256": "e5855de4f2593c1aa7158bccc6d5adab0a796200dd3d7ba9ac0a28718aa19d45",
+        "work": 1
+      },
+      "sandbox": "nx-003-bubblewrap",
+      "source_unchanged": true,
+      "status": "test_exited",
+      "stream_fingerprints": {
+        "stderr": {
+          "bytes": 60,
+          "sha256": "ab9019e334f0288b6eb3777e0c5f2bd69d13b0810a271d3d08d0bb22b6d03d9b"
+        },
+        "stdout": {
+          "bytes": 20,
+          "sha256": "eb998a08ea822018c23426dbaa1733ee4c9f32d3f9180db9d43619391c8c5f12"
+        }
+      },
+      "test": "tests/test_document.py::test_box_regenerates_exact_solid",
+      "worker": "investigator"
+    },
+    {
+      "elapsed_ms": 2985,
+      "exit_status": 1,
+      "host_platform": {
+        "architecture": "x86_64",
+        "coordinator_python": "3.12.14",
+        "kernel": "6.18.57"
+      },
+      "limitations": [
+        "Output is controlled by the test process.",
+        "The supervisor observes process exit, not the truth of test assertions."
+      ],
+      "outcome": "command_exit_one",
+      "provenance": "supervisor_process_observation",
+      "reference": {
+        "attempt": 2,
+        "sha256": "93bca9c69a77d77224149317d130eb6f591b4dd4f3e3baf950b955321bfe8494",
+        "work": 2
+      },
+      "sandbox": "nx-003-bubblewrap",
+      "source_unchanged": true,
+      "status": "test_exited",
+      "stream_fingerprints": {
+        "stderr": {
+          "bytes": 60,
+          "sha256": "ab9019e334f0288b6eb3777e0c5f2bd69d13b0810a271d3d08d0bb22b6d03d9b"
+        },
+        "stdout": {
+          "bytes": 958,
+          "sha256": "32f16c48adeb97f171844c013c2cd0188c8155d5d4bf6967d396d794725528a6"
+        }
+      },
+      "test": "tests/test_document.py::test_box_regenerates_exact_solid",
+      "worker": "investigator"
+    }
+  ],
+  "recommendations": [
+    {
+      "action": "request_experiment",
+      "authorization": "not_granted",
+      "dependencies": "Compatible Linux sandbox, approved manifest, and matching hash-locked dependency runtime.",
+      "evidence": [
+        {
+          "attempt": 1,
+          "sha256": "e5855de4f2593c1aa7158bccc6d5adab0a796200dd3d7ba9ac0a28718aa19d45",
+          "work": 1
+        },
+        {
+          "attempt": 2,
+          "sha256": "93bca9c69a77d77224149317d130eb6f591b4dd4f3e3baf950b955321bfe8494",
+          "work": 2
+        }
+      ],
+      "permissions": [
+        "approve_read_only_experiment"
+      ],
+      "proposal": "Repeat the positive baseline and local volume-control comparison on the intended workstation.",
+      "risks": "A setup failure or missing native dependency can prevent the comparison.",
+      "value": "Check consistent pass and fail behavior across workstation provisioning."
+    }
+  ],
+  "schema": "nexus.investigation-handoff",
+  "version": 1
+}

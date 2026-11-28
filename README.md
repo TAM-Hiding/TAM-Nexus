@@ -10,6 +10,8 @@ NX-004 adds a [read-only engineering investigation](docs/nx-004/README.md) for a
 
 NX-005 adds an approved [HERO-CAD workstation pilot](docs/nx-005/README.md) with an offline dependency environment and Linux preflight.
 
+NX-006 adds [engineering investigation handoffs](docs/nx-006/README.md) and a manifest-bound workstation acceptance probe.
+
 Run the offline suite with `python -m unittest discover -s tests -v` from the repository root. Linux and Python 3.11+ are required. All runtime modules use the Python standard library.
 
 | Document | Contents |

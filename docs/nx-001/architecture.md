@@ -67,6 +67,12 @@ Resolve selectively under both Archive's source policy and Nexus's task/egress p
 
 An Archive adapter using a real corpus waits for the read contract and policy gates in Archive WO-008/011/013 and their prerequisites. The current Flask API and file layout are evidence about Archive, not integration endpoints for this proposal. NX-002 uses opaque fixture references only. Git and locally authorized evidence can support the first HERO-CAD workflow when Archive access is unavailable.
 
+## Practical implementation agnosticism
+
+Prefer stable capability contracts at credible replacement boundaries. Models and providers, Linux distributions, hardware, transports, tools, interfaces, and external services can change without expanding what a worker is allowed to do. Detect host capabilities where practical and name concrete, tested implementations and prerequisites. Introduce an abstraction when it isolates a likely replacement or improves verification. Keep a single implementation when a second one has no demonstrated use.
+
+A capability match must still satisfy authorization, integrity, isolation and resource requirements. An unsupported host or tool fails closed. The [investigation handoff](../nx-006/README.md) is one example of a versioned record independent of UI and model choice. Its observations come from the coordinator's accepted evidence, with reasoning recorded separately.
+
 ## Communication options
 
 | Option | Evaluation | Placement |
